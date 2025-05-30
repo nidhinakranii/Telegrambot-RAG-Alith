@@ -1,0 +1,7 @@
+Chain of Thought (CoT) is a technique that Alith, an AI framework, supports. This method encourages AI agents to divide complex problems into intermediate reasoning steps. It enhances both the accuracy and interpretability of responses, especially when it comes to tasks that require multi-step reasoning.
+
+In this approach, fundamental reasoning is done using specific workflows, such as the 'one_round' reasoning workflow, and currently, workflows that rely on grammars are only supported by local LLMs.
+
+In other words, instead of reaching directly for an end solution, the CoT strategy allows the AI agent to think in stages, helping it to arrive at a more accurate and understandable conclusion. This could be particularly useful when dealing with complex computations or multifaceted queries in multiple programming languages.
+
+In addition to the CoT approach, Alith also uses the blockchain-powered LazAr for decentralized governance and trust, fostering transparency and fairness in data distribution. It works seamlessly with existing decentralized infrastructures and supports interoperability with various frameworks, making it a desirable choice for scenarios needing collaboration among different teams, specific data acquisition requirements, model fine-tuning, and high-performance inference.

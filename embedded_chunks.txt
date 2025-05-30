@@ -1,0 +1,1559 @@
+
+--- Chunk 1 ---
+import Tabs from "nextra/components"; Chain of Thought (CoT) Alith supports Chain of Thought (CoT), a technique that encourages agents to break down complex problems into intermediate reasoning steps. This improves the accuracy and interpretability of responses, especially for tasks requiring multi-step reasoning. <Tabs items={['Rust', 'Python', 'Node.js']}> <Tabs.Tab> Primitive Reasoning ```rust use alith::{client::prelude::*, LLM}; Enforces CoT style reasoning on the output of an LLM, before returning the requested primitive. Currently, reason is bound to the one_round reasoning workflow. Workflows relying on grammars are only supported by local LLMs. #[tokio::main] async fn main() Result<(), anyhow::Error> let model LLM::from_model_name("gpt-4")?; let client model.client(); A boolean reason request let response client .reason() .boolean() .set_instructions("Is the sky blue?") .return_primitive() .await .unwrap(); assert!(response); An integer reason request let mut reason_request client.reason().integer(); Settings specific to the primitive can be accessed through the primitive field reason_request.primitive.lower_bound(0).upper_bound(10); let response reason_request .set_instructions("How many fingers do you have?") .return_primitive() .await .unwrap(); assert_eq!(response, 5); Options let mut reason_request client.reason().integer(); The conclusion and reasoning sentences can be set. This is useful for more complex reasoning tasks where you want the llm to pontificate more. reason_request .conclusion_sentences(4) .reasoning_sentences(3); An integer request, but with an optional response let response reason_request .set_instructions("How many coins are in my pocket?") .return_optional_primitive() .await .unwrap(); assert_eq!(response, None); An exact string reason request let mut reason_request client.reason().exact_string(); reason_request.primitive.add_string_to_allowed("red"); reason_request .primitive .add_strings_to_allowed(&["blue", "green"]); let response reason_request .set_instructions("What color is clorophyll?") .return_primitive() .await .unwrap(); println!("{response}"); Ok(()) </Tabs.Tab> <Tabs.Tab> Comming Soon </Tabs.Tab> <Tabs.Tab> Comming Soon </Tabs.Tab> </Tabs>
+
+--- Chunk 2 ---
+import { Tabs } from "nextra/components"; # Data Availability (DA) Alith supports users to interact with various Data Availability (DA) layers, and natively supports uploading privacy data to DA for sharing after encryption. Different ends use RSA for encryption, which facilitates privacy collaboration and supports verifying the integrity of privacy data in TEE. <Tabs items={['Rust', 'Python', 'Node.js']}> <Tabs.Tab> ## Privacy Data Encryption and Decryption > Note: we need to enable the `wallet`, `marlin` and `crypto` features in the `alith` crate to use this example. ```rust use alith::{ data::{ crypto::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey, decrypt, encrypt}, wallet::LocalEthWallet, }, tee::marlin::{AttestationRequest, MarlinClient}, }; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { // 1. Prepare the privacy data let privacy_data = b"Your Privacy Data"; // 2. Get the signature from user's wallet. let signature = LocalEthWallet::random()?.sign().await?; // 3. Generate the RSA private key and public key let mut rng = rand_08::thread_rng(); let priv_key = RsaPrivateKey::new(&mut rng, 3072)?; let pub_key = RsaPublicKey::from(&priv_key); // 4. Encrypt the privacy data and password let encrypted_key = pub_key.encrypt(&mut rng, Pkcs1v15Encrypt, signature.as_bytes())?; let encrypted_data = encrypt(privacy_data, signature.to_string())?; println!("Encrypted data: {:?}", hex::encode(&encrypted_data)); println!("Encrypted key: {:?}", hex::encode(&encrypted_key)); // 5. Decrypt the privacy data password using the RSA private key.
+
+--- Chunk 3 ---
+let password = priv_key.decrypt(Pkcs1v15Encrypt, &encrypted_key)?; // 6. Decrypt the privacy data using the password let decrypted_data = decrypt(&encrypted_data, String::from_utf8(password)?)?; assert_eq!(decrypted_data.as_slice(), privacy_data); // 7. Generate the proof in the TEE. let client = MarlinClient::default(); println!( "Generate the attestation within TEE: {:?}", client .attestation_hex(AttestationRequest { user_data: Some(decrypted_data), ..Default::default() }) .await? ); Ok(()) } ``` ## Data Storage ### IPFS > Note: we need to enable the `ipfs` feature in the `alith` crate to use this example. ```rust use alith::data::storage::{DataStorage, PinataIPFS, UploadOptions}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let data = b"Your Data"; let name = "file.txt"; let token = std::env::var("IPFS_JWT")?; let ipfs = PinataIPFS::default(); let file_meta = ipfs .upload( UploadOptions::builder() .data(data.to_vec()) .name(name.to_string()) .token(token.clone()) .build(), ) .await?; println!("Upload file to the Pinata IPFS: {:?}", file_meta); println!( "Get the shared link: {:?}", ipfs.get_share_link(token, file_meta.id).await? ); Ok(()) } ``` ### Google Drive > Note: we need to enable the `google-drive` feature in the `alith` crate to use this example. ```rust use alith::data::storage::{DataStorage, GoogleDriveStorage, UploadOptions}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let data = b"Your Data";
+
+--- Chunk 4 ---
+let name = "file.txt"; let storage = GoogleDriveStorage::default(); println!( "Upload file to the google drive: {:?}", storage .upload( UploadOptions::builder() .data(data.to_vec()) .name(name.to_string()) .token(std::env::var("GOOGLE_DRIVE_API_KEY")?) .build() ) .await? ); Ok(()) } ``` ### Dropbox > Note: we need to enable the `dropbox` feature in the `alith` crate to use this example. ```rust use alith::data::storage::{DataStorage, DropboxStorage, UploadOptions}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let data = b"Your Data"; let name = "file.txt"; let token = std::env::var("DROPBOX_API_TOKEN")?; let storage = DropboxStorage::default(); let file_meta = storage .upload( UploadOptions::builder() .data(data.to_vec()) .name(name.to_string()) .token(token.clone()) .build(), ) .await?; println!("Upload file to the dropbox: {:?}", file_meta); println!( "Get the shared link: {:?}", storage.get_share_link(token, file_meta.id).await? ); Ok(()) } ``` </Tabs.Tab> <Tabs.Tab> ## Privacy Data Encryption and Decryption ```python import os import rsa from alith.data import encrypt, decrypt def main(): privacy_data = b"Hello, Privacy Data with PGP!" password = os.urandom(32).hex() (pub_key, priv_key) = rsa.newkeys(3072) encrypted_key = rsa.encrypt(password.encode(), pub_key) encrypted_data = encrypt(privacy_data, password) try: decrypted_password = rsa.decrypt(encrypted_key, priv_key).decode() except rsa.DecryptionError: raise ValueError("RSA Failed") assert decrypted_password == password decrypted_data = decrypt(encrypted_data, decrypted_password) assert decrypted_data == privacy_data print("Crypto test successfully!") main() ``` ## Data Storage ### IPFS ```python from alith.data.storage import ( PinataIPFS,
+
+--- Chunk 5 ---
+UploadOptions, GetShareLinkOptions, StorageError, ) from os import getenv import asyncio async def main(): ipfs = PinataIPFS() try: data = "Your data" name = "your_file.txt" token = getenv("IPFS_JWT", "") file_meta = await ipfs.upload( UploadOptions(name=name, data=data.encode(), token=token) ) print(f"Upload file to the Pinata IPFS: {file_meta}") print( f"Share link: {await ipfs.get_share_link(GetShareLinkOptions(token=token, id=file_meta.id))}" ) except StorageError as e: print(f"Error: {e}") finally: await ipfs.close() if __name__ == "__main__": asyncio.run(main()) ``` </Tabs.Tab> <Tabs.Tab> ## Privacy Data Encryption and Decryption ```typescript import { encrypt, decrypt } from "alith/data/crypto"; import NodeRSA from "node-rsa"; async function main() { const privacyData = "Hello, Privacy Data with PGP!"; const encoder = new TextEncoder(); const dataUint8Array = encoder.encode(privacyData); const password = "securepassword123456789"; const rsa = new NodeRSA({ b: 3072 }); const encryptedKey = rsa.encrypt(password); console.log("Encrypted Key:", encryptedKey.toString("base64")); const encryptedData = await encrypt(dataUint8Array, password); console.log("Encrypted Data:", encryptedData.toString()); const decryptedPassword = rsa.decrypt(encryptedKey); console.log("Decrypted Password:", decryptedPassword.toString()); const decryptedData = await decrypt( encryptedData, decryptedPassword.toString(), ); console.log("Decrypted Data:", decryptedData.toString()); } await main(); ``` ## Data Storage ### IPFS ```typescript import { PinataIPFS } from "alith/data/storage"; async function main() { const ipfs = new PinataIPFS(); const data = "Your privacy data"; const name = "your_privacy_file.txt"; const fileMeta = await ipfs.upload({ name: name, data: Buffer.from(data, "utf-8"), token: process.env.IPFS_JWT || "", }); console.log(`Upload file to the Pinata IPFS: ${fileMeta}`); console.log( `Share link: ${await ipfs.getShareLink({ token: process.env.IPFS_JWT || "", id: fileMeta.id })}`, ); } await main(); ``` </Tabs.Tab> </Tabs>
+
+--- Chunk 6 ---
+import { Tabs } from "nextra/components";
+
+# Decision
+
+Alith supports Decision functionality, which allows agents to make structured decisions based on reasoning. This is useful for tasks that require precise answers, such as boolean decisions, integer responses, or optional values.
+
+<Tabs items={['Rust', 'Python', 'Node.js']}>
+  <Tabs.Tab>
+
+## Primitive Workflow
+
+```rust
+use alith::{
+    client::{prelude::*, DecisionTrait},
+    LLM,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let model = LLM::from_model_name("gpt-4")?;
+    let client = model.client();
+    // A boolean decision request
+    let response = client
+        .reason()
+        .boolean()
+        .decision()
+        .set_instructions("Is the sky blue?")
+        .return_primitive()
+        .await
+        .unwrap();
+    assert!(response);
+
+    // An integer decision request
+    let mut reason_request = client.reason().integer();
+    // Settings specific to the primitive can be accessed through the primitive field
+    reason_request.primitive.lower_bound(0).upper_bound(10);
+    let mut decision_request = reason_request.decision();
+    let response = decision_request
+        .set_instructions("How many fingers do you have?")
+        .return_primitive()
+        .await
+        .unwrap();
+    assert_eq!(response, 5);
+
+    // Options
+    let mut decision_request = client.reason().integer().decision();
+    // Set the number of 'votes', or rounds of reasoning, to be conducted
+    decision_request.best_of_n_votes(5);
+    // Uses a temperature gradient for each round of reasoning
+    decision_request.dynamic_temperature(true);
+
+    // An integer request, but with an optional response
+    let response = decision_request
+        .set_instructions("How many coins are in my pocket?")
+        .return_optional_primitive()
+        .await
+        .unwrap();
+    assert_eq!(response, None);
+    Ok(())
+}
+```
+
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+
+Comming Soon
+
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+
+Comming Soon
+
+</Tabs.Tab>
+</Tabs>
+
+
+--- Chunk 7 ---
+# Inference Alith is designed to provide comprehensive integration support for modern inference engines through a unified interface architecture. Our multi-backend solution will supports: ## Core Inference Engines - **Llamacpp**: Lightweight CPU inference with GGUF quantization support.
+- **MistralRs**: Built in Rust, it leverages low-level optimizations for Mistral-family models, ideal for scenarios requiring low-latency streaming (e.g., chatbots).
+- **vLLM**: High-throughput GPU serving with PagedAttention.
+- **SGLang**: Advanced structured generation for complex workflows.
+- **ONNX Runtime**: Production-grade execution with cross-platform optimizations.
+- **Python**: Native Python runtime integration for prototyping and production, supporting popular frameworks (PyTorch, TensorFlow) and custom scripting. ## Custom Operator Ecosystem We extend framework capabilities through platform-specific optimizations: - Triton custom kernels for PyTorch acceleration
+- CUDA/HIP kernels for GPU-specific optimizations ## Integrations ### Llamacpp ```rust
+use alith::{Agent, Chat, inference::LlamaEngine}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LlamaEngine::new("/root/models/qwen2.5-1.5b-instruct-q5_k_m.gguf").await?;
+ let agent = Agent::new("simple agent", model);
+ println!("{}", agent.prompt("Calculate 10 - 3").await?);
+ Ok(())
+}
+``` Note:
+
+--- Chunk 8 ---
+we need to open the `llamacpp` feature to run the code. ### MistralRs ```rust
+use alith::{Agent, Chat, inference::MistralRsEngine}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = MistralRsEngine::new("/root/models/qwen2.5-1.5b-instruct-q5_k_m.gguf").await?;
+ let agent = Agent::new("simple agent", model);
+ println!("{}", agent.prompt("Calculate 10 - 3").await?);
+ Ok(())
+}
+``` > Note: we need to open the `mistralrs` feature to run the code. ### ONNX Runtime ```rust
+use alith::{
+ Agent, Chat,
+ inference::engines::ort::{GraphOptimizationLevel, ort_init, present::GPT2},
+}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ ort_init()?;
+ let model = GPT2::new(
+ "https://cdn.pyke.io/0/pyke:ort-rs/example-models@0.0.0/gpt2.onnx",
+ "tokenizer.json",
+ GraphOptimizationLevel::Level1,
+ 1,
+ )?;
+ let agent = Agent::new("simple agent", model);
+ println!("{}", agent.prompt("Calculate 10 - 3").await?);
+ Ok(())
+}
+``` > Note: we need to open the `ort` feature to run the code.
+
+--- Chunk 9 ---
+import { Tabs } from "nextra/components"; # LazAI Alith is not only an agent framework, but also serves as a gateway to access the LazAI ecosystem. [LazAI](https://lazai.network/) is a decentralized AI blockchain that leverages the power of [Metis SDK](https://metis-sdk.vercel.app/) to create an open, transparent, and high-performance AI ecosystem to solve data alignment and value capture issues. Developers can directly connect to LazAI infrastructure using Alith Rust, Python or Node.js SDKs. It provides access to models and on chain artificial intelligence, while enabling contributors to securely share privacy data, computation and request reward on LazAI. ## Network Information | | **LazAI (Pre Testnet)** | | --------------- | -------------------------------------------------------------------------------------------------- | | Chain ID | 133718 | | Currency Symbol | LAZAI | | RPC | [https://lazai-testnet.metisdevops.link](https://lazai-testnet.metisdevops.link) | | Block Explorer | [https://lazai-testnet-explorer.metisdevops.link](https://lazai-testnet-explorer.metisdevops.link) | ## For Data Contributors Data contributors are the cornerstone of the LazAI and Alith ecosystems. They can contribute privacy-sensitive data to earn rewards while retaining full control over how their data is used (e.g., for on-chain training, inference, or evaluation) and exercising governance rights. In LazAI, we leverage OpenPGP encryption to secure privacy data. The encryption workflow is as follows: - A random symmetric key is generated to encrypt the data using a symmetric encryption algorithm (e.g., AES). - This symmetric key is then encrypted with the recipient’s public key via an asymmetric encryption algorithm (RSA), producing the final encrypted payload. Specifically: - A random key is derived from the user’s Web3 wallet (e.g., MetaMask) and used as a password to encrypt the user’s private data.
+
+--- Chunk 10 ---
+This step authenticates the sender’s identity. - The encrypted symmetric key (via RSA) and the encrypted data are uploaded to a decentralized archive (DA) (e.g., IPFS, Google Drive, or Dropbox). - The encrypted data's URL and the encrypted key are registered on the LazAI smart contract. - A test data verifier decrypts the symmetric key using their private key, downloads the encrypted data via the URL, and decrypts it within a trusted execution environment (TEE) to ensure security. - The decrypted data and a TEE-generated proof are uploaded to the LazAI contract for validation. - Upon successful verification, users can submit a request via LazAI to receive Data Anchor Tokens (DAT) as rewards. Next, we will demonstrate how to use Alith to interact with LazAI and complete the end-to-end process of contributing privacy data and claiming rewards. After this process is completed, you can view all your DATs in the block browser. <Tabs items={['Rust', 'Python', 'Node.js']}> <Tabs.Tab> ## Install Alith ```shell cargo add alith --git https://github.com/0xLazAI/alith --features "lazai,wallet,crypto,ipfs" ``` > Note: we need to enable the `lazai`, `wallet`, `crypto` and `ipfs` features in the `alith` crate to use this example. ## Set Environment Variables ```shell export PRIVATE_KEY=<your wallet private key> export IPFS_JWT=<your pinata ipfs jwt> ``` ## Privacy Data Contribution and Reward on LazAI ```rust use alith::data::crypto::{DecodeRsaPublicKey, Pkcs1v15Encrypt, RsaPublicKey, encrypt}; use alith::data::storage::{DataStorage, PinataIPFS, UploadOptions}; use alith::lazai::{Client, ProofRequest, U256}; use reqwest; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let client = Client::new_default()?; let ipfs = PinataIPFS::default(); // 1.
+
+--- Chunk 11 ---
+Prepare your privacy data and encrypt it let data_file_name = "your_encrypted_data.txt"; let privacy_data = "Your Privacy Data"; let encryption_seed = "Sign to retrieve your encryption key"; let password = client .wallet .sign_message_hex(encryption_seed.as_bytes()) .await?; let encrypted_data = encrypt(privacy_data, password.clone())?; // 2. Upload the privacy data to IPFS and get the shared url let token = std::env::var("IPFS_JWT")?; let file_meta = ipfs .upload( UploadOptions::builder() .data(encrypted_data) .name(data_file_name.to_string()) .token(token.clone()) .build(), ) .await?; let url = ipfs.get_share_link(token, file_meta.id).await?; // 3. Upload the privacy url to LazAI let mut file_id = client.get_file_id_by_url(url.as_str()).await?; if file_id.is_zero() { file_id = client.add_file(url.as_str()).await?; } // 4. Request proof in the verified computing node client.request_proof(file_id, U256::from(100)).await?; let job_id = client.file_job_ids(file_id).await?.last().cloned().unwrap(); let job = client.get_job(job_id).await?; let node_info = client.get_node(job.nodeAddress).await?.unwrap(); let node_url = node_info.url; let pub_key = node_info.publicKey; let pub_key = RsaPublicKey::from_pkcs1_pem(&pub_key)?; let mut rng = rand_08::thread_rng(); let encryption_key = pub_key.encrypt(&mut rng, Pkcs1v15Encrypt, password.as_bytes())?; let encryption_key = hex::encode(encryption_key); let response = reqwest::Client::new() .post(format!("{
+
+--- Chunk 12 ---
+node_url}/proof")) .json( &ProofRequest::builder() .job_id(job_id.to()) .file_id(file_id.to()) .file_url(url) .encryption_key(encryption_key) .encryption_seed(encryption_seed.to_string()) .build(), ) .send() .await?; if response.status().is_success() { println!(" Proof request sent successfully") } else { println!(" Failed to send proof request: {:?}", response) } // 5. Request DAT reward client.request_reward(file_id, None).await?; println!(" Reward requested for file id {}", file_id); Ok(()) } ``` </Tabs.Tab> <Tabs.Tab> ## Install Alith ```shell python3 -m pip install alith -U ``` ## Set Environment Variables ```shell export PRIVATE_KEY=<your wallet private key> export IPFS_JWT=<your pinata ipfs jwt> ``` ## Privacy Data Contribution and Reward on LazAI ```python from alith.lazai import Client, ProofRequest from alith.data import encrypt from alith.data.storage import ( PinataIPFS, UploadOptions, GetShareLinkOptions, StorageError, ) from eth_account.messages import encode_defunct from os import getenv import asyncio import requests import rsa async def main(): client = Client() ipfs = PinataIPFS() try: # 1. Prepare your privacy data and encrypt it data_file_name = "your_encrypted_data.txt" privacy_data = "Your Privacy Data" encryption_seed = "Sign to retrieve your encryption key" message = encode_defunct(text=encryption_seed) password = client.wallet.sign_message(message).signature.hex() encrypted_data = encrypt(privacy_data.encode(), password) # 2. Upload the privacy data to IPFS and get the shared url token = getenv("IPFS_JWT", "") file_meta = await ipfs.upload( UploadOptions(name=data_file_name, data=encrypted_data, token=token) ) url = await ipfs.get_share_link( GetShareLinkOptions(token=token, id=file_meta.id) ) # 3.
+
+--- Chunk 13 ---
+Upload the privacy url to LazAI file_id = client.get_file_id_by_url(url) if file_id == 0: file_id = client.add_file(url) # 4. Request proof in the verified computing node client.request_proof(file_id, 100) job_id = client.file_job_ids(file_id)[-1] job = client.get_job(job_id) node_info = client.get_node(job[-1]) node_url: str = node_info[1] pub_key = node_info[-1] encryption_key = rsa.encrypt( password.encode(), rsa.PublicKey.load_pkcs1(pub_key.strip().encode(), format="PEM"), ).hex() response = requests.post( f"{node_url}/proof", json=ProofRequest( job_id=job_id, file_id=file_id, file_url=url, encryption_key=encryption_key, encryption_seed=encryption_seed, proof_url=None, ).model_dump(), ) if response.status_code == 200: print("Proof request sent successfully") else: print("Failed to send proof request:", response.json()) # 5. Request DAT reward client.request_reward(file_id) print("Reward requested for file id", file_id) except StorageError as e: print(f"Error: {e}") except Exception as e: raise e finally: await ipfs.close() if __name__ == "__main__": asyncio.run(main()) ``` </Tabs.Tab> <Tabs.Tab> ## Install Alith ```shell npm install alith # Or use pnpm `pnpm install alith` # Or use yarn `yarn install alith` # Or use bun `bun install alith` ``` ## Set Environment Variables ```shell export PRIVATE_KEY=<your wallet private key> export IPFS_JWT=<your pinata ipfs jwt> ``` ## Privacy Data Contribution and Reward on LazAI ```typescript import { Client } from 'alith/lazai' import { PinataIPFS } from 'alith/data/storage' import { encrypt } from 'alith/data/crypto' import NodeRSA from 'node-rsa' import axios, { AxiosResponse } from 'axios' async function main() { const client = new Client() const ipfs = new PinataIPFS() // 1.
+
+--- Chunk 14 ---
+Prepare your privacy data and encrypt it const dataFileName = 'your_encrypted_data.txt' const privacyData = 'Your Privacy Data' const encryptionSeed = 'Sign to retrieve your encryption key' const password = client.getWallet().sign(encryptionSeed).signature const encryptedData = await encrypt(Uint8Array.from(privacyData), password) // 2. Upload the privacy data to IPFS and get the shared url const token = process.env.IPFS_JWT || '' const fileMeta = await ipfs.upload({ name: dataFileName, data: Buffer.from(encryptedData), token: token, }) const url = await ipfs.getShareLink({ token: token, id: fileMeta.id }) // 3. Upload the privacy url to LazAI let fileId = await client.getFileIdByUrl(url) if (fileId == BigInt(0)) { fileId = await client.addFile(url) } // 4. Request proof in the verified computing node await client.requestProof(fileId, BigInt(100)) const jobIds = await client.fileJobIds(fileId) const jobId = jobIds[jobIds.length - 1] const job = await client.getJob(jobId) const nodeInfo = await client.getNode(job.nodeAddress) const nodeUrl = nodeInfo.url const pubKey = nodeInfo.publicKey const rsa = new NodeRSA(pubKey, 'pkcs1-public-pem') const encryptedKey = rsa.encrypt(password, 'hex') const proofRequest = { job_id: Number(jobId), file_id: Number(fileId), file_url: url, encryption_key: encryptedKey, encryption_seed: encryptionSeed, nonce: null, proof_url: null, } const response: AxiosResponse = await axios.post(`${nodeUrl}/proof`, proofRequest, { headers: { 'Content-Type': 'application/json' }, }) if (response.status === 200) { console.log('Proof request sent successfully') } else { console.log('Failed to send proof request:', response.data) } // 5. Request DAT reward await client.requestReward(fileId) console.log('Reward requested for file id', fileId) } await main() ``` </Tabs.Tab> </Tabs>
+
+--- Chunk 15 ---
+import { Tabs } from "nextra/components"; # Model Context Protocol (MCP) Alith supports Model Context Protocol (MCP), a technique that enables AI models to dynamically integrate external services and data sources during inference. This protocol acts as a bridge between LLMs and various tools/APIs, allowing models to: - Access real-time context from external systems (GitHub, databases, APIs, etc.). - Extend capabilities without retraining by connecting to specialized tools. - Maintain fresh knowledge through live data connections. - Execute complex workflows via chained service integrations. The protocol operates through lightweight server adapters defined in the configuration file. Each MCP server: - Runs as a separate process using native runtime (Node.js/Python). - Implements standardized interfaces for tool discovery and execution. - Can chain multiple services through semantic routing. - Maintains security through process isolation. <Tabs items={['Rust', 'Python', 'Node.js']}> <Tabs.Tab> ## Read MCP Servers from Config ```rust use alith::{Agent, Chat, LLM}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let model = LLM::from_model_name("gpt-4")?; let agent = Agent::new("simple agent", model) .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.") .mcp_config_path("servers_config.json").await?; let response = agent.prompt("Calculate 10 - 3").await?; println!("{}", response); Ok(()) } ``` An example of MCP config servers is as follows ```json { "mcpServers": { "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] } } } ``` Note: Note that most MCP
+
+--- Chunk 16 ---
+servers are written in Python or Node.js, > you need to install the Python package manage tool `uv` and the Node.js > package manage tool `npx` </Tabs.Tab> <Tabs.Tab> ## Read MCP Servers from Config ```python from alith import Agent agent = Agent( name="Calculator Agent", model="gpt-4o-mini", preamble="You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.", mcp_config_path="servers_config.json", ) print(agent.prompt("Calculate 10 - 3")) ``` An example of MCP config servers is as follows ```json { "mcpServers": { "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] } } } ``` > Note: Note that most MCP servers are written in Python or Node.js, > you need to install the Python package manage tool `uv` and the Node.js > package manage tool `npx` </Tabs.Tab> <Tabs.Tab> ## Read MCP Servers from Config ```typescript import { Agent } from "alith"; const agent = new Agent({ model: "gpt-4", preamble: "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user question.", mcpConfigPath: "servers_config.json", }); console.log(await agent.prompt("Calculate 10 - 3")); ``` An example of MCP config servers is as follows ```json { "mcpServers": { "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] } } } ``` > Note: Note that most MCP servers are written in Python or Node.js, you need to install the Python package manage tool `uv` and the
+
+--- Chunk 17 ---
+Node.js > package manage tool `npx` </Tabs.Tab> </Tabs> ## Write an MCP Server Of course, writing an MCP Server is also easy. Here, we take using Python to write a simple Web3 interactive MCP Server as an example. - Install the `mcp` dependency. ```shell python3 -m pip install mcp -U ``` - Write the MCP Server code named `mcp_server.py`. ```python from mcp.server.fastmcp import FastMCP from web3 import Web3 # Initialize the MCP server mcp = FastMCP("MetisBlockServer") # Connect to Metis mainnet w3 = Web3(Web3.HTTPProvider("https://andromeda.metis.io/?owner=1088")) # MCP Tool: Fetch Latest Block Number (already working) @mcp.tool() def get_latest_block() -> int: """Fetches the latest block number from Metis mainnet.""" return w3.eth.block_number # MCP Tool: Fetch Previous Block Number (already working) @mcp.tool() def get_previous_block() -> int: """Fetches the previous block number from Metis mainnet.""" latest_block = get_latest_block() return latest_block - 1 # Run the MCP server if __name__ == "__main__": mcp.run() ``` Then you can append the following config to your MCP config file `servers_config.json`. ```json { "mcpServers": { "metis": { "command": "python3", "args": ["mcp_server.py"] } } } ``` At last, you can run the Alith agent code. ```python from alith import Agent agent = Agent( model="gpt-4", mcp_config_path="servers_config.json", ) print(agent.prompt("What is the latest block number on Metis mainnet?")) ```
+
+--- Chunk 18 ---
+import { Tabs } from "nextra/components"; # Retrieval-Augmented Generation (RAG) Alith supports Retrieval-Augmented Generation (RAG), a technique that combines retrieval of relevant information from a knowledge base with text generation. This allows agents to provide more accurate and context-aware responses by leveraging external data. <Tabs items={['Rust', 'Python', 'Node.js']}>
+ <Tabs.Tab> ## RAG with Memory ```rust
+use alith::{Agent, Chat, EmbeddingsBuilder, InMemoryStorage, LLM}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LLM::from_model_name("gpt-4")?;
+ let embeddings_model = model.embeddings_model("text-embedding-3-small");
+ let data = EmbeddingsBuilder::new(embeddings_model.clone())
+ .documents(vec!["doc0", "doc1", "doc2"])
+ .unwrap()
+ .build()
+ .await?;
+ let storage = InMemoryStorage::from_multiple_documents(embeddings_model, data); let agent = Agent::new("simple agent", model)
+ .preamble(
+ r#"
+You are a dictionary assistant here to assist the user in understanding the meaning of words.
+You will find additional non-standard word definitions that could be useful below.
+"#,
+ )
+ .store_index(1, storage);
+ let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(())
+}
+``` ## RAG with Vector Database ```rust
+use alith::store::qdrant::{
+ CreateCollectionBuilder, Distance, QdrantClient, QdrantStorage, VectorParamsBuilder,
+ DEFAULT_COLLECTION_NAME,
+};
+use alith::{Agent, Chat, EmbeddingsBuilder, LLM}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LLM::from_model_name("gpt-4")?;
+ let embeddings_model = model.embeddings_model("text-embedding-3-small");
+ let data = EmbeddingsBuilder::new(embeddings_model.clone())
+ .documents(vec!["doc0", "doc1", "doc2"])
+ .unwrap()
+ .build()
+ .await?;
+
+--- Chunk 19 ---
+let client = QdrantClient::from_url("http://localhost:6334").build()?; if !client.collection_exists(DEFAULT_COLLECTION_NAME).await? {
+ client
+ .create_collection(
+ CreateCollectionBuilder::new(DEFAULT_COLLECTION_NAME)
+ .vectors_config(VectorParamsBuilder::new(1536, Distance::Cosine)),
+ )
+ .await?;
+ } let storage = QdrantStorage::from_multiple_documents(client, embeddings_model, data).await?; let agent = Agent::new("simple agent", model)
+ .preamble(
+ r#"
+You are a dictionary assistant here to assist the user in understanding the meaning of words.
+You will find additional non-standard word definitions that could be useful below.
+"#,
+ )
+ .store_index(1, storage);
+ let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(())
+}
+``` </Tabs.Tab> <Tabs.Tab> ## RAG with Vector Database ```python
+from pathlib import Path
+from alith import Agent, MilvusStore, chunk_text print(
+ Agent(
+ name="RAG Bot",
+ model="gpt-4",
+ preamble="I'm a RAG bot. Ask me anything!",
+ store=MilvusStore().save_docs(chunk_text(Path("README.md").read_text())),
+ ).prompt("What is Alith?")
+)
+``` </Tabs.Tab> <Tabs.Tab> ## RAG with Vector Database ```typescript
+import { Agent, Store, QdrantStore, RemoteModelEmbeddings } from "alith"; const store: Store = new QdrantStore(
+ new RemoteModelEmbeddings(
+ "your embeddings model name",
+ "your API key",
+ "base url",
+ ),
+);
+await store.save("Hello, World");
+const agent = new Agent({
+ model: "gpt-4",
+ preamble:
+ "You are a comedian here to entertain the user using humour and jokes.",
+ store,
+});
+console.log(await agent.prompt("Entertain me!"));
+``` </Tabs.Tab>
+</Tabs>
+
+--- Chunk 20 ---
+import { Tabs } from "nextra/components"; # Trusted Execution Environment (TEE) Alith supports Trusted Execution Environment (TEE) features and provides
+foundational capabilities for agents operating within a TEE. It enables
+agents to perform remote attestation to prove their execution within a
+secure enclave, manage cryptographic keys securely and generate proof. ## Requirements A TEE-enabled environment is required (e.g., Intel TDX) use
+[Phala Cloud](https://cloud.phala.network/) for easy deployment. Of course, Alith supports multiple TEE providers, all of which support
+managing keys and generating proofs within TEE. <Tabs items={['Rust', 'Python', 'Node.js']}>
+ <Tabs.Tab> ### Phala Cloud > Note: we need to enable the `phala` feature in the `alith` crate to use this example. For the deplopment environment, set the environment variable `DSTACK_SIMULATOR_ENDPOINT` with the
+simulator: https://github.com/Leechael/tappd-simulator/releases In production environments, mount the socket file in your docker container: ```yaml
+volumes:
+ - /var/run/tappd.sock:/var/run/tappd.sock
+``` ```rust
+use alith::tee::phala::DstackClient; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let client = DstackClient::default();
+ // Derive a key from a key path
+ // Returns a key and a certificate chain
+ println!(
+ "Derive key: {:?}",
+ client.derive_key(Some("test"), None, None).await?
+ );
+ // Get a TDX quote
+ println!(
+ "Generate report: {:?}",
+ client.tdx_quote("test", Default::default()).await?
+ );
+ Ok(())
+}
+``` ### Marlin Note: we need to enable the `marlin`
+
+--- Chunk 21 ---
+feature in the `alith` crate to use this example. Alith Marlin TEE Integration & SDK. This SDK provides a Rust client for communicating with the attestation server. For local development and testing without TDX devices, you can use the simulator available for download here:
+https://github.com/marlinprotocol/oyster-monorepo/tree/master/attestation/server-custom-mock and then set the
+environment variable `MARLIN_ATTESTATION_ENDPOINT` (Optional, default is http://127.0.0.1:1350) - From Source ```shell
+git clone https://github.com/marlinprotocol/oyster-monorepo
+cd oyster-monorepo/attestation/server-custom-mock # Listens on 127.0.0.1:1350 by default
+cargo run -r # To customize listening interface and port
+cargo run -r --ip-addr <ip>:<port>
+``` - From Docker ```shell
+# The server runs on 1350 inside Docker, can remap to any interface and port
+docker run --init -p 127.0.0.1:1350:1350 marlinorg/attestation-server-custom-mock
+``` ```rust
+use alith::tee::marlin::{AttestationRequest, MarlinClient}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let client = MarlinClient::default();
+ println!(
+ "Generate the attestation with the hex string format: {:?}",
+ client
+ .attestation_hex(AttestationRequest {
+ user_data: Some("test".as_bytes().to_vec()),
+ ..Default::default()
+ })
+ .await?
+ );
+ Ok(())
+}
+``` </Tabs.Tab> <Tabs.Tab> Comming Soon </Tabs.Tab> <Tabs.Tab> Comming Soon </Tabs.Tab>
+</Tabs>
+
+--- Chunk 22 ---
+import { Tabs } from "nextra/components"; # Developing This section provides instructions for setting up the development environment for the Alith SDK and contributing to the project. <Tabs items={['Rust', 'Python', 'Node.js', 'Website']}> <Tabs.Tab> ### Prerequisites - Install Rust using [rustup](https://rustup.rs/): ```shell curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh ``` ### Clone the Repository ```shell git clone https://github.com/0xLazAI/alith.git cd alith ``` ### Build the SDK To build the Rust SDK, run: ```shell make check ``` ### Run Tests To run the test suite: ```shell make test ``` ### Format Code Ensure your code follows Rust's formatting standards: ```shell make fmt ``` ### Linting Use Clippy to catch common mistakes and improve code quality: ```shell make clippy ``` ### Contributing - Fork the repository and create a new branch for your changes. - Submit a pull request with a detailed description of your changes. </Tabs.Tab> <Tabs.Tab> ### Prerequisites - Install [Python](https://www.python.org/downloads/) (v3.8 or higher). - Install [Cargo](https://www.rust-lang.org/tools/install) (for Rust code). ### Clone the Repository ```shell git clone https://github.com/0xLazAI/alith.git cd alith ``` ### Set Up a Virtual Environment Create and activate a virtual environment: ```shell python3 -m venv venv source venv/bin/activate ``` ### Install Maturin Install `maturin` to build the Python bindings: ```shell cargo install maturin ``` ### Build the SDK Build the Python SDK: ```shell maturin develop ``` ### Run Tests Run the test suite: ```shell python3 -m pytest
+
+--- Chunk 23 ---
+``` ### Contributing - Fork the repository and create a new branch for your changes. - Submit a pull request with a detailed description of your changes. </Tabs.Tab> <Tabs.Tab> ### Prerequisites - Install [Node.js](https://nodejs.org/) (v18 or higher). - Install [Cargo](https://www.rust-lang.org/tools/install) (for Rust code). ### Clone the Repository ```shell git clone https://github.com/0xLazAI/alith.git cd alith ``` ### Install Dependencies Install the required dependencies: ```shell npm install ``` ### Build the SDK To build the Node.js SDK, run: ```shell npm run build ``` ### Run Tests To run the test suite: ```shell npm test ``` ### Format Code Use Prettier to format your code: ```shell npm run format ``` ### Contributing - Fork the repository and create a new branch for your changes. - Submit a pull request with a detailed description of your changes. </Tabs.Tab> <Tabs.Tab> ### Prerequisites - Install [Node.js](https://nodejs.org/) (v18 or higher). - Install [pnpm](https://pnpm.io/installation) (recommended). ### Clone the Repository ```bash git clone https://github.com/0xLazAI/alith.git cd alith/website ``` ### Install Dependencies Install the required dependencies: ```bash pnpm install ``` ### Run the Development Server Start the development server: ```bash pnpm dev ``` The website will be available at `http://localhost:3000`. ### Build the Website To build the website for production: ```bash pnpm build ``` ### Deploy the Website Deploy the website to your preferred platform (e.g., GitHub Page, Vercel, Netlify). ### Contributing - Fork the repository and create a new branch for your changes. - Submit a pull request with a detailed description of your changes. </Tabs.Tab> </Tabs>
+
+--- Chunk 24 ---
+import { Tabs } from "nextra/components"; # Embeddings The Alith SDK supports embeddings, which are numerical representations of text that capture semantic meaning. Embeddings are useful for tasks like semantic search, clustering, and similarity comparisons. Below, you'll find examples of how to generate and use embeddings in Rust, Python, and Node.js. <Tabs items={['Rust', 'Python', 'Node.js']}>
+ <Tabs.Tab> ## Large Language Embeddings Model Here we take the OpenAI embeddings model as the example. ```rust
+use alith::{Agent, EmbeddingsBuilder, LLM}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LLM::from_model_name("gpt-4")?;
+ let embeddings_model = model.embeddings_model("text-embedding-3-small");
+ let data = EmbeddingsBuilder::new(embeddings_model.clone())
+ .documents(vec!["doc0", "doc1", "doc2"])
+ .unwrap()
+ .build()
+ .await?;
+}
+``` ## Local Fast Embedding Model > Note that running this program will pull the embeddings model from Hugging Face and start the inference engine locally for inference, so we need to turn on the `fastembed` feature. ```rust
+use alith::{EmbeddingsBuilder, FastEmbeddingsModel}; #[tokio::main] async fn main()
+
+--- Chunk 25 ---
+Result<(), anyhow::Error> { let embeddings_model = FastEmbeddingsModel::try_default().unwrap(); let data = EmbeddingsBuilder::new(embeddings_model.clone()) .documents(vec!["doc0", "doc1", "doc2"]) .unwrap() .build() .await?; println!("{:?}", data); Ok(()) } ``` </Tabs.Tab> <Tabs.Tab> ## Remote Embeddings Model ```python
+from alith import RemoteModelEmbeddings print(
+ RemoteModelEmbeddings(
+ model="your embeddings model name",
+ api_key="your API key",
+ base_url="base url",
+ ).embed_texts(["Hello", "World"])
+)
+``` ## Local Fast Embedding Model > Note that running this program will pull the embeddings model from Hugging Face and start the inference engine locally for inference, so we need to turn on the inference feature. ```shell
+python3 -m pip install fastembed
+``` ```python
+from alith import FastEmbeddings print(FastEmbeddings().embed_texts(["Hello", "World"]))
+``` </Tabs.Tab> <Tabs.Tab> ## Remote Embeddings Model ```typescript
+import { RemoteModelEmbeddings } from ".alith"; console.log(
+ new RemoteModelEmbeddings(
+ "your embeddings model name",
+ "your API key",
+ "base url",
+ ).embedTexts(["Hello", "World"]),
+);
+``` </Tabs.Tab>
+</Tabs>
+
+--- Chunk 26 ---
+import { Tabs } from "nextra/components";
+
+# Extractor
+
+Alith allows you to extract any sturcture data from the input prompt with the model.
+
+<Tabs items={['Rust', 'Python', 'Node.js']}>
+  <Tabs.Tab>
+
+## Simple Structure
+
+```rust
+use alith::{Extractor, LLM};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct Person {
+    name: String,
+    age: usize,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let model = LLM::from_model_name("gpt-4")?;
+    let extractor = Extractor::new::<Person>(model);
+    let response: Person = extractor.extract("Alice is 18 years old").await?;
+    println!("{:?}", response);
+    Ok(())
+}
+```
+
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+
+## Simple Structure
+
+```python
+from alith import Agent, Extractor
+from pydantic import BaseModel
+
+
+class Person(BaseModel):
+    name: str
+    age: int
+
+
+print(
+    Extractor(
+        Agent(
+            model="gpt-4",
+        ),
+        Person,
+    ).extract("Alice is 18 years old!")
+)
+```
+
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+
+## Simple Structure
+
+```typescript
+import { Agent, Extractor } from "alith";
+import { z } from "zod";
+
+export const personSchema = z
+  .object({
+    name: z.string(),
+    age: z.number(),
+  })
+  .strip();
+
+const agent = new Agent({ model: "gpt-4" });
+const extractor = new Extractor(agent, personSchema);
+console.log(extractor.extract("Alice is 18 years old!"));
+```
+
+</Tabs.Tab>
+</Tabs>
+
+
+--- Chunk 27 ---
+import { Tabs } from "nextra/components"; # Knowledge Alith supports knowledge bases, **allowing agents to access structured or unstructured data for more informed and context-aware responses**. You can integrate databases, document stores, or custom knowledge sources to enhance your agents' capabilities. <Tabs items={['Rust', 'Python', 'Node.js']}>
+ <Tabs.Tab> ## String Source Knowledge ```rust
+use alith::{Agent, Chat, LLM, Knowledge, StringKnowledge};
+use std::sync::Arc; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let knowledges: Vec<Box<dyn Knowledge>> = vec![
+ Box::new(StringKnowledge::new("Reference Joke 1")),
+ ];
+ let model = LLM::from_model_name("gpt-4")?;
+ let mut agent = Agent::new("simple agent", model)
+ .preamble("You are a comedian here to entertain the user using humour and jokes.");
+ agent.knowledges = Arc::new(knowledges);
+ let response = agent.prompt("Entertain me!").await?; println!("{}", response); Ok(())
+}
+``` ## Text Source Knowledge ```rust
+use alith::{Agent, Chat, LLM, Knowledge, TextFileKnowledge};
+use std::sync::Arc; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let knowledges: Vec<Box<dyn Knowledge>> = vec![
+ Box::new(TextFileKnowledge::new("path/to/text.txt")),
+ ];
+ let model = LLM::from_model_name("gpt-4")?;
+ let mut agent = Agent::new("simple agent", model)
+ .preamble("You are a comedian here to entertain the user using humour and jokes.");
+ agent.knowledges = Arc::new(knowledges);
+ let response = agent.prompt("Entertain me!").await?; println!("{}", response);
+
+--- Chunk 28 ---
+Ok(())
+}
+``` ## PDF Source Knowledge ```rust
+use alith::{Agent, Chat, LLM, Knowledge, PdfFileKnowledge};
+use std::sync::Arc; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let knowledges: Vec<Box<dyn Knowledge>> = vec![
+ Box::new(PdfFileKnowledge::new("path/to/pdf.pdf")),
+ ];
+ let model = LLM::from_model_name("gpt-4")?;
+ let mut agent = Agent::new("simple agent", model)
+ .preamble("You are a comedian here to entertain the user using humour and jokes.");
+ agent.knowledges = Arc::new(knowledges);
+ let response = agent.prompt("Entertain me!").await?; println!("{}", response); Ok(())
+}
+``` ## HTML Source Knowledge ```rust
+use alith::{Agent, Chat, LLM, HtmlKnowledge, Knowledge,};
+use std::io::Cursor;
+use std::sync::Arc;
+use url::Url; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let url = "https://en.m.wikivoyage.org/wiki/Seoul";
+ let html = reqwest::get(url).await.unwrap().text().await.unwrap(); let knowledges: Vec<Box<dyn Knowledge>> = vec![
+ Box::new(HtmlKnowledge::new(
+ Cursor::new(html),
+ Url::parse(url).unwrap(),
+ false,
+ )),
+ ];
+ let model = LLM::from_model_name("gpt-4")?;
+ let mut agent = Agent::new("simple agent", model)
+ .preamble("You are a comedian here to entertain the user using humour and jokes.");
+ agent.knowledges = Arc::new(knowledges);
+ let response = agent.prompt("Entertain me!").await?; println!("{}", response); Ok(())
+}
+``` </Tabs.Tab> <Tabs.Tab> Comming Soon </Tabs.Tab> <Tabs.Tab> Comming Soon </Tabs.Tab>
+</Tabs>
+
+--- Chunk 29 ---
+import Steps, Tabs from "nextra/components"; Large Language Models (LLMs) Alith provides seamless integration with various **Large Language Models (LLMs)**, allowing you to easily switch between models like GPT-4, GPT-3.5, Claude, DeepSeek and others. Below, you'll find examples of how to initialize and use LLMs in Rust, Python, and Node.js. <Tabs items={['Rust', 'Python', 'Node.js']}> <Tabs.Tab> OpenAI Models Set the API key. Unix ```shell export OPENAI_API_KEY=<your API key> Windows ```shell $env:OPENAI_API_KEY "<your API key>" Write the code. ```rust use alith::{Agent, Chat, LLM}; #[tokio::main] async fn main() Result<(), anyhow::Error> let model LLM::from_model_name("gpt-4")?; let agent Agent::new("simple agent", model) .preamble("You are a comedian here to entertain the user using humour and jokes."); let response agent.prompt("Entertain me!").await?; println!("{}", response); Ok(()) OpenAI API Compatible Models Here, we take the DeepSeek model as the example. ```rust use alith::{Agent, Chat, LLM}; #[tokio::main] async fn main() Result<(), anyhow::Error> let model LLM::openai_compatible_model( "<Your API Key>", Replace with your api key or read it from env. "api.deepseek.com", "deepseek-chat", or `deepseek-reasoner` for DeepSeek R1 Model let agent Agent::new("simple agent", model) .preamble("You are a comedian here to entertain the user using humour and jokes."); let response agent.prompt("Entertain me!").await?; println!("{}", response); Ok(()) Anthropic Models Set the API key. Unix ```shell export ANTHROPIC_API_KEY=<your API key> Windows ```shell $env:ANTHROPIC_API_KEY "<your API key>" Write the code. ```rust use alith::{Agent, Chat, LLM}; #[tokio::main] async fn main() Result<(), anyhow::Error> let model LLM::from_model_name("claude-3-5-sonnet")?; let agent Agen
+
+--- Chunk 30 ---
+t::new("simple agent", model) .preamble("You are a comedian here to entertain the user using humour and jokes."); let response agent.prompt("Entertain me!").await?; println!("{}", response); Ok(()) HuggingFace Models ```rust use alith::HuggingFaceLoader; fn main() Result<(), anyhow::Error> let _path HuggingFaceLoader::new().load_file("model.safetensors", "gpt2")?; Ok(()) Note: we can use the `HF_ENDPOINT` env to set different huggingface endpoints. GGUF Models ```rust use alith::{GgufLoader, GgufLoaderTrait}; fn main() Result<(), anyhow::Error> let _model GgufLoader::default() .hf_quant_file_url("https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/blob/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf") .load()?; By default we attempt to extract everything we need from the GGUF file. If you need to specifiy the tokenizer or chat template to use, you can add a hf repo to load from. let _model GgufLoader::default() .hf_quant_file_url("https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/blob/main/Meta-Llama-3.1-8B-Instruct-Q8_0.gguf") .hf_config_repo_id("meta-llama/Meta-Llama-3-8B-Instruct") .load()?; We can also load the model from the local path let _model GgufLoader::default() .local_quant_file_path("/root/models/qwen2.5-1.5b-instruct-q5_k_m.gguf") .load()?; Ok(()) </Tabs.Tab> <Tabs.Tab> OpenAI Models Set the API key. Unix ```shell export OPENAI_API_KEY=<your API key> Windows ```shell $env:OPENAI_API_KEY "<your API key>" Write the code. ```python from alith import Agent agent Agent( model="gpt-4o-mini", preamble="You are a comedian here to entertain the user using humour and jokes.", print(agent.prompt("Entertain me!")) OpenAI API Compatible Models
+
+--- Chunk 31 ---
+Here, we take the DeepSeek model as the example. ```python from alith import Agent agent Agent( model="deepseek-chat", or `deepseek-reasoner` for DeepSeek R1 api_key="<Your API Key>", Replace with your api key or read it from env. base_url="api.deepseek.com", preamble="You are a comedian here to entertain the user using humour and jokes.", print(agent.prompt("Entertain me!")) Anthropic Models Set the API key. Unix ```shell export ANTHROPIC_API_KEY=<your API key> Windows ```shell $env:ANTHROPIC_API_KEY "<your API key>" Write the code. ```python from alith import Agent agent Agent( model="claude-3-5-sonnet", preamble="You are a comedian here to entertain the user using humour and jokes.", print(agent.prompt("Entertain me!")) </Tabs.Tab> <Tabs.Tab> OpenAI Models Set the API key. Unix ```shell export OPENAI_API_KEY=<your API key> Windows ```shell $env:OPENAI_API_KEY "<your API key>" Write the code. ```typescript import Agent from "alith"; const agent new Agent({ model: "gpt-4", preamble: "You are a comedian here to entertain the user using humour and jokes.", console.log(await agent.prompt("Entertain me!")); OpenAI API Compatible Models Here, we take the DeepSeek model as the example. ```typescript import Agent from "alith"; const agent new Agent({ model: "deepseek-chat", or `deepseek-reasoner` for DeepSeek R1 apiKey: "<Your API Key>", baseUrl: "api.deepseek.com", preamble: "You are a comedian here to entertain the user using humour and jokes.", console.log(await agent.prompt("Entertain me!")); Anthropic Models Set the API key. Unix ```shell export ANTHROPIC_API_KEY=<your API key> Windows ```shell $env:ANTHROPIC_API_KEY "<your API key>" Write the code. ```typescript import Agent from "alith"; const agent new Agent({ model: "claude-3-5-sonnet", preamble: "You are a comedian here to entertain the user using humour and jokes.", console.log(await agent.prompt("Entertain me!")); </Tabs.Tab> </Tabs>
+
+--- Chunk 32 ---
+import { Tabs } from "nextra/components";
+
+# Memory
+
+Alith supports memory functionality, **allowing agents to retain and recall information across multiple interactions**. This is particularly useful for building conversational agents that can remember user preferences, context, or previous conversations.
+
+<Tabs items={['Rust', 'Python', 'Node.js']}>
+  <Tabs.Tab>
+
+## Window Buffer Memory
+
+```rust
+use alith::{Agent, Chat, WindowBufferMemory, LLM};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let model = LLM::from_model_name("gpt-4")?;
+    let mut agent = Agent::new("simple agent", model)
+        .preamble("You are a searcher. When I ask questions about Web3, you can search from the Internet and answer them. When you encounter other questions, you can directly answer them.")
+        .memory(WindowBufferMemory::new(10))
+    let response = agent.prompt("What's BitCoin?").await?;
+
+    println!("{}", response);
+
+    Ok(())
+}
+```
+
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+
+## Window Buffer Memory
+
+```python
+from alith import Agent, WindowBufferMemory
+import os
+
+agent = Agent(
+    model="gpt-4",
+    preamble="You are a comedian here to entertain the user using humour and jokes.",
+    memory=WindowBufferMemory(),
+)
+print(agent.prompt("Entertain me!"))
+print(agent.prompt("Entertain me again!"))
+```
+
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+
+## Window Buffer Memory
+
+```typescript
+import { Agent, WindowBufferMemory } from "alith";
+
+const agent = new Agent({
+  model: "gpt-4",
+  memory: new WindowBufferMemory(),
+});
+console.log(await agent.prompt("Calculate 10 - 3"));
+console.log(await agent.prompt("Calculate 10 - 3 again"));
+```
+
+</Tabs.Tab>
+</Tabs>
+
+
+--- Chunk 33 ---
+import { Tabs } from "nextra/components"; # Store Alith provides a Store feature that allows you to persist and retrieve data across sessions or interactions. This is useful for storing user preferences, session data, or any other information that needs to be retained over time. <Tabs items={['Rust', 'Python', 'Node.js']}> <Tabs.Tab> ## Memory Store ```rust use alith::{Agent, Chat, InMemoryStorage, LLM}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let model = LLM::from_model_name("gpt-4")?; let embeddings_model = model.embeddings_model("text-embedding-3-small"); let storage = InMemoryStorage::from_multiple_documents::<()>(embeddings_model, vec![]); let agent = Agent::new("simple agent", model) .preamble( r#" You are a dictionary assistant here to assist the user in understanding the meaning of words. You will find additional non-standard word definitions that could be useful below. "#, ) .store_index(1, storage); let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(()) } ``` ## Qdrant Vector Database > Note: we need to enable the `qdrant` feature in the `alith` crate to use this example. ```rust use alith::store::qdrant::{ CreateCollectionBuilder, Distance, QdrantClient, QdrantStorage, VectorParamsBuilder, DEFAULT_COLLECTION_NAME, }; use alith::{Agent, Chat, EmbeddingsBuilder, LLM}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let model = LLM::from_model_name("gpt-4")?; let client = QdrantClient::from_url("http://localhost:6334").build()?;
+
+--- Chunk 34 ---
+if !client.collection_exists(DEFAULT_COLLECTION_NAME).await? { client .create_collection( CreateCollectionBuilder::new(DEFAULT_COLLECTION_NAME) .vectors_config(VectorParamsBuilder::new(1536, Distance::Cosine)), ) .await?; } let storage = QdrantStorage::from_multiple_documents::<()>(client, embeddings_model, vec![]).await?; let agent = Agent::new("simple agent", model) .preamble( r#" You are a dictionary assistant here to assist the user in understanding the meaning of words. You will find additional non-standard word definitions that could be useful below. "#, ) .store_index(1, storage); let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(()) } ``` ## PgVector Vector Database > Note: we need to enable the `pgvector` feature in the `alith` crate to use this example. ```rust use alith::store::pgvector::{PgPoolOptions, PgVectorStorage, migrate, sqlx}; use alith::{Agent, Chat, EmbeddingsBuilder, LLM}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let model = LLM::from_model_name("gpt-4")?; let embeddings_model = model.embeddings_model("text-embedding-3-small"); let data = EmbeddingsBuilder::new(embeddings_model.clone()) .documents(vec!["doc0", "doc1", "doc2"]) .unwrap() .build() .await?; let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set"); let pool = PgPoolOptions::new() .max_connections(50) .idle_timeout(std::time::Duration::from_secs(5)) .connect(&database_url) .await .expect("Failed to create postgres pool"); // Make sure database is setup migrate!("examples/pgvector_migarations").run(&pool).await?;
+
+--- Chunk 35 ---
+// Delete documents from table to have a clean start (optional, not recommended for production) sqlx::query("TRUNCATE alith").execute(&pool).await?; let storage = PgVectorStorage::from_multiple_documents(pool, embeddings_model, data).await?; let agent = Agent::new("simple agent", model) .preamble( r#" You are a dictionary assistant here to assist the user in understanding the meaning of words. You will find additional non-standard word definitions that could be useful below. "#, ) .store_index(1, storage); let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(()) } ``` ## Milvus Vector Storage > Note: we need to enable the `milvus` feature in the `alith` crate to use this example. ```rust use alith::store::milvus::{MilvusClient, MilvusStorage}; use alith::{Agent, Chat, EmbeddingsBuilder, LLM}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let model = LLM::from_model_name("gpt-4")?; let embeddings_model = model.embeddings_model("text-embedding-3-small"); let data = EmbeddingsBuilder::new(embeddings_model.clone()) .documents(vec!["doc0", "doc1", "doc2"]) .unwrap() .build() .await?; let client = MilvusClient::new("http://localhost:19530").await?; let storage = MilvusStorage::from_multiple_documents(client, embeddings_model, data).await?; let agent = Agent::new("simple agent", model) .preamble( r#" You are a dictionary assistant here to assist the user in understanding the meaning of words. You will find additional non-standard word definitions that could be useful below. "#,
+
+--- Chunk 36 ---
+) .store_index(1, storage); let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(()) } ``` ## ChromaDB > Note: we need to enable the `chromadb` feature in the `alith` crate to use this example. ```rust use alith::store::chromadb::{ChromaClient, ChromaStorage}; use alith::{Agent, Chat, EmbeddingsBuilder, LLM}; #[tokio::main] async fn main() -> Result<(), anyhow::Error> { let model = LLM::from_model_name("gpt-4")?; let embeddings_model = model.embeddings_model("text-embedding-3-small"); let data = EmbeddingsBuilder::new(embeddings_model.clone()) .documents(vec!["doc0", "doc1", "doc2"]) .unwrap() .build() .await?; // With default ChromaClientOptions // Defaults to http://localhost:8000 let client: ChromaClient = ChromaClient::new(Default::default()).await?; let storage = ChromaStorage::from_multiple_documents(client, embeddings_model, data).await?; let agent = Agent::new("simple agent", model) .preamble( r#" You are a dictionary assistant here to assist the user in understanding the meaning of words. You will find additional non-standard word definitions that could be useful below. "#, ) .store_index(1, storage); let response = agent.prompt("What does \"glarb-glarb\" mean?").await?; println!("{}", response); Ok(()) } ``` </Tabs.Tab> <Tabs.Tab> ## Milvus Vector Database ```python from alith import MilvusStore MilvusStore().save_docs(["doc1", "doc2", "doc3"]) ``` ## Chroma Vector Database ```python from alith import ChromaDBStore ChromaDBStore().save_docs(["doc1", "doc2", "doc3"]) ``` </Tabs.Tab> <Tabs.Tab> ## Qdrant Vector Database ```typescript import { Store, QdrantStore, Embeddings, RemoteModelEmbeddings } from "../src"; let embeddings: Embeddings = new RemoteModelEmbeddings( "your embeddings model name", "your API key", "base url", ); const store: Store = new QdrantStore(embeddings); store.save("Hello, World"); console.log(store.search("Hello, World")); ``` </Tabs.Tab> </Tabs>
+
+--- Chunk 37 ---
+import { Tabs } from "nextra/components"; # Tools Alith allows you to **define tools that agents can use to perform specific tasks**. Tools are functions or classes that encapsulate logic, such as calculations, API calls, or custom operations. Below, you'll find examples of how to create and use tools in Rust, Python, and Node.js. <Tabs items={['Rust', 'Python', 'Node.js']}>
+ <Tabs.Tab> ## Custom Calculation Tool ```rust
+use alith::{Agent, Chat, StructureTool, ToolError, LLM};
+use async_trait::async_trait;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize}; #[derive(JsonSchema, Serialize, Deserialize)]
+pub struct Input {
+ pub x: usize,
+ pub y: usize,
+} pub struct Adder;
+#[async_trait]
+impl StructureTool for Adder {
+ type Input = Input;
+ type Output = usize; fn name(&self) -> &str {
+ "adder"
+ } fn description(&self) -> &str {
+ "Add x and y together"
+ } async fn run_with_args(&self, input: Self::Input) -> Result<Self::Output, ToolError> {
+ let result = input.x + input.y;
+ Ok(result)
+ }
+} pub struct Subtract;
+#[async_trait]
+impl StructureTool for Subtract {
+ type Input = Input;
+ type Output = usize; fn name(&self) -> &str {
+ "subtract"
+ } fn description(&self) -> &str {
+ "Subtract y from x (i.e.: x - y)"
+ } async fn run_with_args(&self, input: Self::Input) -> Result<Self::Output, ToolError> {
+ let result = input.x - input.y;
+ Ok(result)
+ }
+} #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LLM::from_model_name("gpt-4")?;
+ let agent = Agent::new("simple agent", model)
+ .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
+ .tool(Adder).await
+ .tool(Subtract).await;
+ let response = agent.prompt("Calculate 10 - 3").await?;
+
+--- Chunk 38 ---
+println!("{}", response); Ok(())
+}
+``` ## Builtin Search Tool ```rust
+use alith::{Agent, Chat, SearchTool, LLM}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LLM::from_model_name("gpt-4")?;
+ let agent = Agent::new("simple agent", model)
+ .preamble("You are a searcher. When I ask questions about Web3, you can search from the Internet and answer them. When you encounter other questions, you can directly answer them.")
+ .tool(SearchTool::default()).await;
+ let response = agent.prompt("What's BitCoin?").await?; println!("{}", response); Ok(())
+}
+``` </Tabs.Tab> <Tabs.Tab> ## Custom Calculation Tool ```python
+from alith import Agent def sum(x: int, y: int) -> int:
+ """Add x and y together"""
+ return x + y def sub(x: int, y: int) -> int:
+ """Subtract y from x (i.e.: x - y)"""
+ return x - y agent = Agent(
+ name="Calculator Agent",
+ model="gpt-4o-mini",
+ preamble="You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+ tools=[sum, sub],
+)
+print(agent.prompt("Calculate 10 - 3"))
+``` </Tabs.Tab> <Tabs.Tab> ## Custom Calculation Tool ```typescript
+import { Agent } from "../agent"; const agent = new Agent({
+ model: "gpt-4",
+ preamble:
+ "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user question.",
+ tools: [
+ {
+ name: "subtract",
+ description: "Subtract y from x (i.e.: x - y)",
+ parameters: JSON.stringify({
+ type: "object",
+ properties: {
+ x: {
+ type: "number",
+ description: "The number to substract from",
+ },
+ y: {
+ type: "number",
+ description: "The number to substract",
+ },
+ },
+ }),
+ handler: (x: number, y: number) => {
+ return x - y;
+ },
+ },
+ ],
+});
+console.log(await agent.prompt("Calculate 10 - 3"));
+``` </Tabs.Tab>
+</Tabs>
+
+--- Chunk 39 ---
+import { Steps, Tabs } from "nextra/components"; # Get Started This guide will walk you through everything you need to get started with the
+**Alith**. Whether you're building intelligent agents, integrating tools,
+or experimenting with language models, Alith provides a seamless experience
+across multiple programming languages. Below, you'll find installation
+instructions, quick start guides, and examples for **Rust**, **Python**,
+and **Node.js**. <Tabs items={['Rust', 'Python', 'Node.js']}>
+ <Tabs.Tab> <Steps> ## Install Dependency - Install Alith Dependency ```shell
+cargo add alith --git https://github.com/0xLazAI/alith
+``` - Install Other Dependencies like `tokio`, `async_trait`, `schemars`, `serde` and `anyhow`. ```shell
+cargo add tokio async_trait schemars serde anyhow
+``` ## Write the Code ```rust
+use alith::{Agent, Chat, LLM}; #[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+ let model = LLM::from_model_name("gpt-4")?;
+ let agent = Agent::new("simple agent", model)
+ .preamble("You are a comedian here to entertain the user using humour and jokes."); let response = agent.prompt("Entertain me!").await?; println!("{}", response); Ok(())
+}
+``` ## Model Provider Settings We can configure different AI model providers, here we take the OpenAI model as th example. - Unix ```shell
+export OPENAI_API_KEY=<your API key>
+``` - Windows ```shell
+$env:OPENAI_API_KEY = "<your API key>"
+``` ## Run the Code ```shell
+cargo run --release
+``` </Steps> </Tabs.Tab> <Tabs.Tab> <Steps> ## Install Dependency - Install Alith Dependency
+
+--- Chunk 40 ---
+```shell
+python3 -m pip install alith
+# Or use `pip install alith` direclty.
+``` ## Write the Code ```python
+from alith import Agent agent = Agent(
+ model="gpt-4",
+ preamble="You are a comedian here to entertain the user using humour and jokes.",
+)
+print(agent.prompt("Entertain me!"))
+``` ## Model Provider Settings We can configure different AI model providers, here we take the OpenAI model as th example. - Unix ```shell
+export OPENAI_API_KEY=<your API key>
+``` - Windows ```shell
+$env:OPENAI_API_KEY = "<your API key>"
+``` ## Run the Code ```shell
+python3 main.py
+``` </Steps> </Tabs.Tab> <Tabs.Tab> <Steps> ## Install Dependency - Install the `alith` dependency ```shell
+npm install alith
+# Or use pnpm `pnpm install alith`
+# Or use yarn `yarn install alith`
+``` - Install the `json-schema` dependency ```shell
+npm i --save-dev @types/json-schema
+# Or use pnpm `pnpm install --save-dev @types/json-schema`
+# Or use yarn `yarn install --save-dev @types/json-schema`
+``` ## Write the Code ```typescript
+import { Agent } from "alith"; const agent = new Agent({
+ model: "gpt-4",
+ preamble:
+ "You are a comedian here to entertain the user using humour and jokes.",
+});
+console.log(await agent.prompt("Entertain me!"));
+``` ## Model Provider Settings We can configure different AI model providers, here we take the OpenAI model as th example. - Unix ```shell
+export OPENAI_API_KEY=<your API key>
+``` - Windows ```shell
+$env:OPENAI_API_KEY = "<your API key>"
+``` ## Run the Code ```shell
+tsc index.ts && node index.js
+``` </Steps> </Tabs.Tab>
+</Tabs>
+
+--- Chunk 41 ---
+# Introduction The year 2025 is poised to be a watershed moment, heralded as the 'Year of the AI Agent,' where the convergence of AI and Web3 is redefining the boundaries of technological innovation. At the core of this transformation stands Alith, a groundbreaking framework engineered to address fundamental AI challenges, establishing itself as an indispensable tool at this critical intersection of technologies. Why are we confident in this vision? And how do we foresee the future within the AI + Web3 paradigm through the lens of the AI Agent Framework? ## The Problem Landscape The rapid advancement of AI technologies has illuminated critical challenges within centralized AI ecosystems. Faced with both macro and micro challenges in the age of AI, we cannot afford to stand idly by. ### Macro-Level Challenges in the AI Ecosystem - **Data Sovereignty and Accessibility**: Centralized platforms often monopolize access to data and resources, creating barriers for small-to-medium developers and limiting innovation.
+- **Privacy Concerns**: Users lack control over their data, leading to privacy breaches and unverified data usage.
+- **Resource Inefficiency**: Current models struggle with high inference costs, low efficiency, and limitations in accessing non-public data.
+- **Limited Decentralization**: Governance models skew toward centralized authorities, resulting in opaque decision-making and inequitable profit distribution. ### Micro-Level Challenges: Usability of Agent Tools - **Complexity**: Agent tools often demand technical expertise, limiting accessibility for non-developers. Customization options are cumbersome and not intuitive.
+- **Performance Bottlenecks**: High computational costs and low responsiveness reduce the efficiency and scalability of current agent frameworks.
+- **Fragmentation:** Isolated ecosystems make integration difficult, leading to disjointed workflows and inconsistent user experiences.
+- **Lack of Web3 Integration:** Many frameworks fail to leverage blockchain’s transparency and interoperability, missing opportunities for innovation in decentralized AI applications. These problems hinder innovation and limit the participation of developers and developers-to-be from diverse backgrounds in the development of AI technology. This highlights the belief that many ordinary individuals will transition into developers, joining the wave of AI and Web3 innovation.
+
+--- Chunk 42 ---
+To address these issues, we have launched LazAI — a decentralized AI platform dedicated to building an open, transparent, high-performance, secure, and inclusive AI ecosystem. ## What is LazAI and Alith Alith is a decentralized AI agent framework tailored to harness the capabilities of the LazAI -a decentralized AI platform dedicated to building an open, transparent, high-performance, secure, and inclusive AI ecosystem.
+LazAI solves AI’s data alignment problem with novel technologies, from chaining Data Anchoring Tokens (DATs) to form a blockchain to self-contained iDAOs for entities, enabling composable open networks for AI and Web3 applications.
+On the LazAI platform, AI developers, data providers, and other stakeholders can collaborate through
+integrated development tools to jointly create high-quality AI assets. These assets can be used for further development or traded and shared within
+the platform. LazAI uses blockchain technology to ensure that all interactions are transparent and tamper-proof, with clear ownership and fair
+profit distribution for contributors. <p align="center">
+ <img src="../lazai.png" alt="LazAI Arch" />
+</p> Alith combines cutting-edge performance optimization with robust Web3 integration, addressing critical issues such as data sovereignty, efficient inference, and decentralized collaboration. By leveraging blockchain technology, Alith ensures transparent data governance and fair resource allocation, empowering developers and contributors within a decentralized AI ecosystem. Its cross-language SDKs for Python, Rust, and Node.js, alongside features like low-code orchestration and seamless deployment, make it both developer-friendly and highly scalable. <p align="center">
+ <img src="../alith.png" alt="Alith Arch" />
+</p> ## Why Alith In LazAI, we believe that AI Agent is not a solution, but a goal we want to achieve and a problem that needs to be urgently solved. In the past 1 - 2 years, many AI Agent frameworks have emerged on the market, but they have not truly played the role of AI Agent. Restricted by the acquisition of internal data, the difficulty and cost of training and fine-tuning, as well as the high inference cost and low efficiency, AI Agents cannot be widely practiced, and the application scenarios are mostly concentrated in chatbots and so on. Therefore, we have launched the Alith AI Agent framework, which optimizes the model as much as possible on the basis of effectively utilizing data, improves the reasoning performance, and meets the needs of scene use.
+
+--- Chunk 43 ---
+### Key Features of Alith **High-Performance Inference** - Utilizes Rust’s performance strengths combined with graph optimization and model quantization.
+- Supports JIT/AOT compilation across CPUs, GPUs, and TPUs for dynamic scenario adaptability. **Developer Accessibility** - Provides cross-language SDKs (Rust, Python, Node.js) and low-code orchestration tools.
+- Enables one-click deployment and operational functionalities to reduce onboarding complexity. **Web3 Ecosystem Integration** - Designed to seamlessly integrate with decentralized applications and blockchain networks.
+- Ensures interoperability with existing Web3 and AI frameworks. **Scalability** - Supports complex workflows, from basic internal prompts to advanced low-level API customizations.
+- Enables customization of roles, goals, tools, operations, and behaviors while maintaining abstract clarity. **Data Sovereignty and Privacy Reasoning** - Leverages LazAI blockchain for data traceability and privacy protection.
+- Actively removes biased or harmful data while incentivizing diverse contributions. ### Advantages of Alith **Addressing Data Monopolization** By utilizing blockchain-enabled governance, Alith resolves issues tied to data centralization. Its consensus-driven mechanisms empower contributors to retain ownership and control over their data, fostering a culture of equitable participation. The result is a vibrant ecosystem where data and resources flow seamlessly without traditional gatekeeping barriers. **Superior Inference Performance** Traditional AI systems face high costs and inefficiencies in inference tasks. Alith’s advanced optimizations—including Rust-based enhancements and quantization techniques—achieve low-latency, high-throughput performance, particularly in resource-constrained environments. This ensures robust AI applications across various devices and operational contexts. **Enhanced Developer Usability** Alith democratizes AI development through its SDKs and low-code capabilities. Developers, regardless of technical expertise, can rapidly create, deploy, and maintain AI agents. This accessibility reduces entry barriers, encouraging a broader spectrum of contributors to engage with AI technology. **Decentralized Governance and Trust** With its blockchain backbone, Alith establishes a decentralized governance framework that ensures fairness and transparency in asset distribution. This approach eliminates reliance on centralized authorities, fostering trust and collaboration among stakeholders.
+
+--- Chunk 44 ---
+**Ecosystem Affinity** Alith’s compatibility with Web3 ecosystems enhances its versatility. It integrates seamlessly with existing decentralized infrastructures, enabling users to leverage blockchain’s security and transparency benefits. Additionally, it supports interoperability with frameworks like Langchain and Eliza, extending its utility across diverse applications. ## How to Choose? In short, if you need collaboration among different development teams and multiple Agents, and your scenario has special requirements for data acquisition, model fine-tuning, and high-performance inference, Alith will be your top choice. At the same time, Alith also provides the capability support offered by most AI Agent frameworks. To better understand Alith’s unique value, let’s compare it to other AI agent frameworks: ### VS. Langchain Langchain is a popular framework for building applications powered by Large Language Models (LLMs). It provides a wide range of tools and integrations for linking together different components of AI applications. However, Langchain focuses primarily on the orchestration of LLMs and lacks native support for Web3 and blockchain integration. Alith is designed specifically for Web3, providing seamless integration with blockchain technology, decentralized data governance, and high-performance inference capabilities. If your project requires Web3 integration or decentralized AI workflows, Alith is a better choice. In addition, based on the Alith Python SDK and Node SDK, we can easily integrate Alith with Langchain and Langchainjs. - **Focus**: Langchain excels in LLM orchestration but lacks blockchain integration.
+- **Advantage**: Alith’s Web3 affinity and decentralized workflows make it superior for projects requiring robust blockchain interoperability.
+- **Synergy**: Alith’s Python and Node.js SDKs enable seamless integration with Langchain, combining strengths for enhanced functionality. ### VS. Eliza Eliza is a lightweight AI framework designed to be simple and easy to use for Web3. It is ideal for developers who need to quickly prototype AI applications without dealing with complex configurations and workflows. Compared to Eliza, Alith has a cross-language SDK, high-performance inference, and support for complex workflows, providing a more powerful solution for developers who need to build scalable, high-performance AI agents with Web3 capabilities. In addition, based on the Alith Node SDK, we can easily combine Alith and Eliza to benefit from the Eliza Web3 ecosystem while making up for the disadvantages of the Eliza framework.
+
+--- Chunk 45 ---
+- **Focus**: Eliza prioritizes simplicity and prototyping.
+- **Advantage**: Alith’s cross-language SDKs, high-performance inference, and scalability offer a more comprehensive solution for complex workflows.
+- **Synergy**: Alith’s integration capabilities allow users to complement Eliza’s lightweight framework with high-performance features. ### VS. Swarms Swarms is another AI framework that emphasizes collaborative multi-agent systems. It allows multiple AI agents to work together to solve complex tasks. While Swarms excels in multi-agent collaboration, it does not provide the same level of Web3 integration or high-performance inference optimization as Alith, nor does it provide multi-language SDK support. Alith's focus on Web3-friendly features, combined with its Rust-based performance optimizations, makes it a more suitable choice for developers looking to build decentralized, high-performance AI agents. - **Focus**: Swarms emphasizes collaborative multi-agent systems.
+- **Advantage**: Alith outperforms Swarms with its Web3 integration, high-performance inference, and cross-language SDK support. ### VS. Rig Rig is also an AI Agent framework written in Rust. Compared to Rig, Alith provides developers with easier-to-use Python and Node SDKs, and has made more inference optimizations for different devices such as CPU, GPU, etc., which is more suitable for developers who need to combine real-time data processing with AI and blockchain technologies. - **Focus**: Rig is another Rust-based framework.
+- **Advantage**: Alith’s ease of use, thanks to Python and Node.js SDKs, along with device-specific inference optimizations, makes it more developer-friendly. ## Conclusion The Alith AI Agent framework together with LazAI ecosystem exemplifies a forward-thinking approach to AI development. Its decentralized, high-performance, and developer-friendly design addresses long-standing challenges in traditional AI ecosystems. By prioritizing inclusivity, privacy, and interoperability, Alith stands poised to redefine how AI agents are built, deployed, and governed.
+
+--- Chunk 46 ---
+import { Tabs } from "nextra/components"; # Coinbase Agentkit This integration provides the following methods: 1. **Use Agentkit actions within Alith**: You can directly leverage a variety of actions from the agentkit ecosystem without the need to rewrite them in Alith. <Tabs items={['Python', 'Node.js']}> <Tabs.Tab> ```shell python3 -m pip install coinbase_agentkit_alith ``` ```python import json import os import sys import time from coinbase_agentkit import ( AgentKit, AgentKitConfig, CdpWalletProvider, CdpWalletProviderConfig, cdp_api_action_provider, cdp_wallet_action_provider, erc20_action_provider, pyth_action_provider, wallet_action_provider, weth_action_provider, ) from coinbase_agentkit_alith import get_alith_tools from alith import Agent from dotenv import load_dotenv # Configure a file to persist the agent's CDP API Wallet Data. wallet_data_file = "wallet_data.txt" load_dotenv() def initialize_agent() -> Agent: """Initialize the agent with CDP Agentkit.""" # Initialize CDP Wallet Provider wallet_data = None if os.path.exists(wallet_data_file): with open(wallet_data_file) as f: wallet_data = f.read() cdp_config = None if wallet_data is not None: cdp_config = CdpWalletProviderConfig(wallet_data=wallet_data) wallet_provider = CdpWalletProvider(cdp_config) agentkit = AgentKit( AgentKitConfig( wallet_provider=wallet_provider, action_providers=[ cdp_api_action_provider(), cdp_wallet_action_provider(), erc20_action_provider(), pyth_action_provider(), wallet_action_provider(), weth_action_provider(), ], ) ) wallet_data_json = json.dumps(wallet_provider.export_wallet().to_dict()) with open(wallet_data_file, "w") as f: f.write(wallet_data_json) # use get_langchain_tools tools = get_alith_tools(agentkit) preamble = ( "Be creative and do something interesting on the blockchain. "
+
+--- Chunk 47 ---
+"Choose an action or set of actions and execute it that highlights your abilities." ) # Create an Alith Agent and CDP Agentkit tools. return Agent( model="gpt-4o-mini", preamble=preamble, tools=tools, ) agent = initialize_agent() print(agent.prompt("Transfer 0.5 ETH to 0xAABB")) ``` </Tabs.Tab> <Tabs.Tab> ```shell pnpm i coinbase-agentkit-alith ``` ```typescript import { getAlithTools } from "coinbase-agentkit-alith"; import { Agent } from "alith"; import { AgentKit, cdpApiActionProvider, erc721ActionProvider, pythActionProvider, walletActionProvider, CdpWalletProvider, } from "@coinbase/agentkit"; import * as dotenv from "dotenv"; import * as fs from "fs"; dotenv.config(); /** * Validates that required environment variables are set * * @throws {Error} - If required environment variables are missing * @returns {void} */ function validateEnvironment(): void { const missingVars: string[] = []; // Check required variables const requiredVars = [ "OPENAI_API_KEY", "CDP_API_KEY_NAME", "CDP_API_KEY_PRIVATE_KEY", ]; requiredVars.forEach((varName) => { if (!process.env[varName]) { missingVars.push(varName); } }); // Exit if any required variables are missing if (missingVars.length > 0) { console.error("Error: Required environment variables are not set"); missingVars.forEach((varName) => { console.error(`${varName}=your_${varName.toLowerCase()}_here`); }); process.exit(1); } // Warn about optional NETWORK_ID if (!process.env.NETWORK_ID) { console.warn( "Warning: NETWORK_ID not set, defaulting to base-sepolia testnet", ); } } // Add this right after imports and before any other code validateEnvironment(); // Configure a file to persist the agent's CDP MPC Wallet Data const WALLET_DATA_FILE = "wallet_data.txt"; const preamble = `You are a helpful agent that can interact onchain using the Coinbase Developer Platform AgentKit. You are empowered to interact onchain using your tools. If you ever need funds, you can request them from the faucet if you are on network ID 'base-sepolia'. If not, you can provide your wallet details and request funds from the user. Before executing your first action, get the wallet details to see what network
+
+--- Chunk 48 ---
+you're on. If there is a 5XX (internal) HTTP error code, ask the user to try again later. If someone asks you to do something you can't do with your currently available tools, you must say so, and encourage them to implement it themselves using the CDP SDK + Agentkit, recommend they go to docs.cdp.coinbase.com for more information. Be concise and helpful with your responses. Refrain from restating your tools' descriptions unless it is explicitly requested.`; /** * Initialize the agent with CDP Agentkit and Vercel AI SDK tools * * @returns Object containing initialized tools * @throws Error if initialization fails */ async function initializeAgent() { try { let walletDataStr: string | null = null; // Read existing wallet data if available if (fs.existsSync(WALLET_DATA_FILE)) { try { walletDataStr = fs.readFileSync(WALLET_DATA_FILE, "utf8"); } catch (error) { console.error("Error reading wallet data:", error); // Continue without wallet data } } const walletProvider = await CdpWalletProvider.configureWithWallet({ apiKeyName: process.env.CDP_API_KEY_NAME, apiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY?.replace( /\ /g, " ", ), cdpWalletData: walletDataStr || undefined, networkId: process.env.NETWORK_ID || "base-sepolia", }); const agentKit = await AgentKit.from({ walletProvider, actionProviders: [ cdpApiActionProvider({ apiKeyName: process.env.CDP_API_KEY_NAME, apiKeyPrivateKey: process.env.CDP_API_KEY_PRIVATE_KEY, }), erc721ActionProvider(), pythActionProvider(), walletActionProvider(), ], }); const tools = getAlithTools(agentKit); return { tools }; } catch (error) { console.error("Failed to initialize agent:", error); throw error; } } /** * Main entry point for the chatbot application * Initializes the agent and starts chat mode * * @throws Error if initialization or chat mode fails */ async function main() { try { const { tools } = await initializeAgent(); const agent = new Agent({ model: "gpt-4", preamble: preamble, tools: tools, }); console.log(await agent.prompt("Entertain me!")); } catch (error) { console.error("Error:", error); process.exit(1); } } ``` </Tabs.Tab> </Tabs> ## Reference - [Agentkit GitHub](https://github.com/coinbase/agentkit)
+
+--- Chunk 49 ---
+# ElizaOS
+
+This integration provides following methods:
+
+1. **Use ElizaOS plugins within Alith**: You can directly leverage a variety of plugins from the eliza ecosystem without the need to rewrite them in Alith. However, this method still requires you to handle complex template engineering to extract structured data from natural language.
+2. **Enable the Alith plugin in ElizaOS**: You can achieve multi-agent interaction by passing an instance of the Alith agent to the Alith plugin. Additionally, you can utilize Alith's advanced features such as tools and extractors to develop complex plugins without the need for template engineering. This approach is simple and easy to use while benefiting from Alith's high-performance inference optimization capabilities.
+
+- Install the dependency.
+
+```shell
+pnpm i elizaos-alith
+```
+
+- Use ElizaOS plugins within Alith
+
+```typescript
+import { Agent } from "elizaos-alith";
+
+const agent = new Agent({
+	model: "gpt-4",
+	runtime: // Set your custom elizaos agent runtime,
+	preamble:
+		"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user question.",
+	plugins: [
+		// Put your elizaos plugins here.
+	],
+});
+const result = agent.prompt("Calculate 10 - 3");
+console.log(result);
+```
+
+- Enable the Alith plugin in ElizaOS
+
+```typescript
+import { createAlithPlugin } from "elizaos-alith";
+import { Agent } from "alith";
+import { AgentRuntime } from "@elizaos/core";
+
+const agent = new Agent({
+  model: "gpt-4",
+  preamble:
+    "You are a comedian here to entertain the user using humour and jokes.",
+});
+const runtime = new AgentRuntime({
+  // Add Alith plugin in the ElizaOS agent runtime.
+  plugins: [
+    createAlithPlugin(agent),
+    // Omit other plugins
+  ],
+  // Omit other fields
+});
+```
+
+
+--- Chunk 50 ---
+# Langchain
+
+This integration provides the following methods:
+
+- **Enable the Alith chain in Langchain**
+
+We can use the Alith as the LLM node for the existing Langchain workflow and get the performance gains of Alith.
+
+```shell
+python3 -m pip install langchain-alith
+```
+
+```python
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain_alith import LLM
+from alith import Agent
+
+prompt = PromptTemplate.from_template(
+    """As an adaptable question-answering assistant, your role is to leverage the provided context to address user inquiries. When direct answers are not apparent from the context, you are encouraged to draw upon analogies or related knowledge to formulate or infer solutions. If a certain answer remains elusive, politely acknowledge the limitation. Aim for concise responses, ideally within three sentences. In response to requests for links, explain that link provision is not supported.
+
+Question: {question}
+"""
+)
+
+
+def main():
+    llm = LLM(
+        agent=Agent(
+            model="gpt-4",
+            preamble="You are a comedian here to entertain the user using humour and jokes.",
+        )
+    )
+    chain = {"question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
+    print(chain.invoke("query"))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+
+--- Chunk 51 ---
+# Reference
+
+- [LazAI Website](https://lazai.network)
+- [Alith Website](https://lazai.network/alith)
+- [Alith X/Twitter](https://x.com/0xalith)
+- [Alith Telegram](https://t.me/alithai)
+- [Alith Agent Framework Project](https://github.com/0xLazAI/alith)
+- [Alith LLM Client Project](https://github.com/0xLazAI/llm_client)
+
+
+--- Chunk 52 ---
+# Roadmap We are committed to continuous innovation, with key milestones including: ## Q1 2025 - **Models** - **Llama** - **Perplexity** - **Grok** - **Qwen** - **DeepSeek** - **Other Community Models** - **Features** - **Prompt Management System**: Introduce a system for managing, versioning, and optimizing prompts to improve model performance and usability. - **Multi-Agent Workflow/Chain**: Enable complex workflows where multiple agents can collaborate, pass tasks, and share context seamlessly. - **LLM Output Extractor for Any Structure**: Build a robust output extraction system that can parse and structure unstructured LLM outputs into usable formats (e.g., JSON, XML). - **Embedding for Any Structure**: Develop embedding techniques that can handle diverse data structures (e.g., graphs, tables, nested JSON) for better representation and retrieval. - **Inference Engine**: Release the first version of the inference engine, optimized for low-latency, high-throughput model serving. - **More Storage Support**: Mivus, Postgres, Sqlite, etc. - **More Knowlege Support**: Docx, Excel, CSV, GitCommit, etc. - **Output Parsrs**: JSON, XML, Markdown, etc. - **Integrations** - **Eliza for Alith Node SDK**: Integrate Eliza into the Alith Node SDK. - **Langchain for Alith Python SDK**: Fully integrate Langchain into the Alith Python SDK to enable advanced chaining, memory, and tooling for LLM applications. - **Langchain.js for Alith Node SDK**: Bring Langchain capabilities to the Node.js ecosystem with Langchain.js integration. - **Model Context Protocol (MCP) Integration**: Bring MCP client capabilities to the Alith SDK and integrate with more MCP servers. - **Tools** - **Clients**
+
+--- Chunk 53 ---
+- **Twitter**: Develop a Twitter client for real-time social media monitoring, sentiment analysis, and engagement. - **Discord**: Create a Discord bot for community management, moderation, and interactive AI-driven conversations. - **Slack**: Develop a Slack bot for seamless communication and task management. - **Web3** - **Ethereum**: Enable integration with Ethereum for smart contract interactions, wallet management, and decentralized application (dApp) support. - **Solana**: Add support for Solana to provide fast and cost-effective blockchain interactions. - **Metis**: Add support for Metis to provide an efficient Layer 2 scaling solution, enabling rapid deployment and low-cost interactions for decentralized applications (dApps) and decentralized autonomous organizations (DAOs). - **Other Community Tools** - **Operations** - **Monitoring and Logging**: Enhance monitoring and logging capabilities for better operational insights and troubleshooting. - **Security Enhancements**: Introduce advanced security measures, including encryption and access control, to protect data and systems such as TEE. - **Use Cases** - **ChatBot CLI and UI**: Release a command-line interface (CLI) and user interface (UI) for building and deploying chatbots with minimal setup. - **DeFAI**: Develop AI-driven tools for decentralized finance, including portfolio management, risk assessment, and automated trading strategies. - **Community and Ecosystem** - **Developer Documentation**: Create more comprehensive documentation, including tutorials, API references, and best practices, to onboard developers quickly. - **Partnerships and Collaborations**: Form strategic partnerships with academic institutions, industry leaders, and open-source communities to drive innovation and adoption. ## Q2 2025 - **Models** - **Custom Model Training**: Develop tools for fine-tuning and training custom models specific to user needs. - **Model Optimization**: Implement techniques for model compression and optimization to improve performance and reduce costs. - **Features**
+
+--- Chunk 54 ---
+- **Real-Time Data Processing**: Integrate real-time data processing capabilities for time-sensitive applications. - **Explainability and Transparency**: Develop features to provide insights into model decision-making processes, enhancing trust and usability. - **Distributed Inference**: Enhance the inference engine to support distributed computing, enabling scalable and efficient model serving across multiple nodes. - **Adaptive Batching**: Introduce adaptive batching techniques to optimize throughput and latency based on incoming request patterns. - **Integrations** - **LazAI**: Integrate LazAI Blockchain for decentralized, secure, and scalable AI model deployment. Enable on-chain inference using WebAssembly (WASM) for efficient and trustless execution of AI models. - **IoT Devices**: Enable integration with IoT devices for real-time data collection, processing, and decision-making in edge computing scenarios. - **Tools** - **Web3** - **Polygon**: Add support for Polygon to enhance scalability and reduce transaction costs. - **NFT Marketplaces**: Integrate with popular NFT marketplaces like OpenSea and Rarible. - **Other Community Tools** - **Operations** - **AWS Lambda Deployment**: Optimize the framework for serverless deployment on AWS Lambda, enabling scalable and cost-effective execution. - **Vercel Deployment**: Support deployment on Vercel for seamless frontend and backend integration, particularly for web-based applications. - **Use Cases** - **Meme Coin Creation Platform**: Launch a platform for creating and managing meme coins, leveraging AI for market analysis, trend prediction, and community engagement. - **AI-Powered Content Creation**: Develop tools for AI-generated content, including articles, videos, and social media posts, tailored to specific audiences and platforms. - **Community and Ecosystem** - **Developer Documentation**: Create more comprehensive documentation, including tutorials, API references, and best practices, to onboard developers quickly. - **Partnerships and Collaborations**: Form strategic partnerships with academic institutions, industry leaders, and open-source communities to drive innovation and adoption.
+
+--- Chunk 55 ---
+# Alith Agent Integration
+
+## Connecting Knowledge Sources to Alith Agents
+
+Alith agents can directly leverage the structured knowledge files produced by the knowledge scraping system. This integration enables agents to access up-to-date information without requiring manual updates or constant API calls to external sources.
+
+### Integration Overview
+
+The knowledge scraping system outputs standardized JSON files that Alith agents can consume in various ways:
+
+1. **Direct File Access**: Agents can read and parse the JSON files directly
+2. **Knowledge API**: Using the knowledge as an API endpoint
+3. **Memory Integration**: Importing the knowledge into the agent's long-term memory store
+
+### Configuration Example
+
+Coming soon
+
+
+--- Chunk 56 ---
+# Blog Scraper: Technical Description ## Overview The Blog Scraper is designed to automatically collect and process blog posts from the Metis.io website. It uses a lightweight HTML parsing approach to extract relevant information efficiently and store it in a structured format suitable for consumption by Alith AI agents. ## Architecture The blog scraper follows a straightforward pipeline architecture: 1. **Fetch HTML**: Retrieve the blog listing page 2. **Extract Post Metadata**: Parse HTML to identify blog posts and their metadata 3. **Fetch Individual Posts**: Retrieve the full content of each blog post 4. **Process and Structure**: Transform the raw data into a structured format 5. **Store Results**: Save the processed data as JSON ## Implementation Details ### Core Components ``` scripts/addknowledge_blog.py # Main scraper implementation .github/workflows/addknowledge_blog.yaml # Automation workflow knowledge/metis/blog.json # Output knowledge file ``` ### Dependencies The blog scraper has minimal dependencies to ensure reliability: - `requests`: For making HTTP requests to the blog website - `beautifulsoup4`: For parsing HTML content - `hashlib`: For generating unique identifiers - Standard library modules (`json`, `datetime`, `os`) ### Key Functions #### Fetching Blog Posts ```python def fetch_blog_posts(): response = requests.get(BLOG_URL) if response.status_code != 200: raise Exception("Failed to fetch blog page.") soup = BeautifulSoup(response.text, "html.parser") return soup.find_all( "div", {"role": "listitem", "class": "collection-item tech w-dyn-item"} ) ``` #### Parsing Blog Items ```python def parse_blog_item(item): link_tag = item.find("a", {"aria-label": "link-article"}) link = link_tag["href"] date = item.find("div", class_="text-1-pc").text.strip() author = ( item.find("div", class_="autor-tag").text.strip() if item.find("div", class_="autor-tag")
+
+--- Chunk 57 ---
+else "Unknown" ) title = item.find("div", {"fs-cmsfilter-field": "title"}).text.strip() summary = item.find("div", class_="text-intro-pc").text.strip() return { "url": f"https://metis.io{link}", "date": date, "author": author, "title": title, "summary": summary, } ``` #### Generating Unique IDs ```python def generate_date_hash_id(blog): try: pub_date = datetime.strptime(blog["date"], "%b %d, %Y") date_str = pub_date.strftime("%d%m%Y") hash_str = hashlib.sha256(blog["url"].encode()).hexdigest()[:8] return f"{date_str}{hash_str}" except (ValueError, KeyError): print(f"Warning: Invalid date format for blog: '{blog['url']}'. Using url hash instead.") url_hash = hashlib.sha256(blog["url"].encode()).hexdigest()[:16] return url_hash ``` ### Configuration Options The blog scraper offers several configurable parameters: ```python # Constants BLOG_URL = "https://metis.io/blog" # Source URL for blog posts MAX_BLOGS = 10 # Maximum number of new blogs to process at once DAYS_TO_KEEP = 99999 # Retention period in days (set high for minimal maintenance) JSON_PATH = "knowledge/metis/blog.json" # Output file path ``` ### Data Flow 1. The script checks for existing blog data in the JSON_PATH 2. It fetches the latest blog posts from the Metis blog 3. For each new post (not already in the database): - Parse the metadata - Generate a unique ID - Scrape the full content - Add to the collection 4. Remove any posts older than DAYS_TO_KEEP (if configured) 5. Save the updated collection back to the JSON file ### Output Structure The blog scraper produces a JSON file with the following structure: ```json { "latest_id": "12032025abcd1234", "blogs": [ { "id": "12032025abcd1234", "url": "https://metis.io/blog-post-url",
+
+--- Chunk 58 ---
+"date": "Mar 12, 2025", "author": "Author Name", "title": "Blog Post Title", "summary": "A brief summary of the blog post...", "content": "The full text content of the blog post..." } // Additional blog posts... ] } ``` ### Error Handling The scraper implements several error handling mechanisms: - Connection failures are caught and reported - Invalid date formats are handled gracefully with fallback ID generation - File operations use try/except blocks to prevent crashes - Invalid HTML structures are handled with conditional checks ### Automation with GitHub Actions The blog scraper is automated through a GitHub Actions workflow that: 1. Runs daily at midnight UTC 2. Sets up the necessary Python environment 3. Installs required dependencies 4. Executes the scraping script 5. Commits and pushes any changes to the repository ```yaml name: "Knowledge Scraping - blogs" on: workflow_dispatch: schedule: - cron: "0 0 * * *" # Runs daily at midnight UTC jobs: scrape-blogs: runs-on: ubuntu-latest permissions: contents: write steps: - name: Checkout uses: actions/checkout@v4 - name: Set up Python uses: actions/setup-python@v4 with: python-version: "3.x" - name: Install Dependencies run: | python -m pip install --upgrade pip pip install requests beautifulsoup4 - name: Run Your Script run: | echo "Running the scraping task" python scripts/addknowledge_blog.py - name: Commit and push if content changed run: | git config user.name "Automated" git config user.email "actions@users.noreply.github.com" git add -A timestamp=$(date -u) git commit -m "Latest data: ${timestamp}" || exit 0 git push ``` ## Performance Considerations The blog scraper is designed to be lightweight and efficient: - It processes only new content, avoiding redundant operations - The HTML parsing is targeted to specific elements, minimizing memory usage - The script runs quickly, typically completing in a few seconds - Error handling ensures that temporary failures don't disrupt the knowledge base ## Customization Guide To adapt the blog scraper for other sources: 1. Modify the `BLOG_URL` constant to point to the new source 2. Update the HTML selectors in `fetch_blog_posts()` and `parse_blog_item()` functions 3. Adjust the date format handling in `generate_date_hash_id()` if necessary 4. Consider changing the retention period via `DAYS_TO_KEEP` based on the source's update frequency
+
+--- Chunk 59 ---
+> **Note**: This page provides information for those interested in developing automation capabilities for their agents. No additional action is required, as the blog and CEG knowledge files are already available in the Alith GitHub repository and updated daily. # CEG Forum Scraper: Technical Description ## Overview The CEG Forum Scraper is designed to collect and process proposals and discussions from the CEG governance forum. Unlike the blog scraper, it uses Selenium for browser automation to handle dynamic content that requires JavaScript rendering. This approach enables detailed extraction of proposal content and associated comments. ## Architecture The CEG forum scraper follows a multi-stage processing pipeline: 1. **Initialize Browser**: Configure a headless Chrome browser using Selenium
+2. **Fetch Main Page**: Navigate to the forum listing page
+3. **Extract Proposal List**: Identify and extract metadata for each proposal
+4. **Process Individual Proposals**: Fetch and parse detailed content for each proposal
+5. **Collect Comments**: Optionally gather discussion threads for each proposal
+6. **Store Structured Data**: Save the processed information as JSON ## Implementation Details ### Core Components ```
+scripts/addknowledge_CEG.py # Main scraper implementation
+.github/workflows/addknowledge_ceg.yaml # Automation workflow
+knowledge/metis/ceg.json # Output knowledge file
+``` ### Dependencies The CEG forum scraper requires: - `selenium`: For browser automation and JavaScript rendering
+- `webdriver_manager`: For ChromeDriver management
+- Standard library modules (`json`, `hashlib`, `re`, `os`, `datetime`) ### Key Functions #### Configuring Selenium ```python
+# Configure Chrome options for headless mode
+options = Options()
+options.add_argument("--headless")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument("--disable-gpu") # Automatically download and install the appropriate ChromeDriver
+service = Service(ChromeDriverManager().install())
+driver = webdriver.Chrome(service=service, options=options)
+``` #### Fetching Proposals ```python
+def fetch_proposals():
+ driver.get(MAIN_URL)
+ proposals = [] # Locate proposal entries on the main page
+ rows = driver.find_elements(By.CSS_SELECTOR, "tr[data-topic-id]")
+ for row in rows:
+ try:
+ if len(proposals) >= MAX_PROPOSALS: # Stop if max proposals reached
+ break
+
+--- Chunk 60 ---
+# Extract proposal data
+ topic_id = row.get_attribute("data-topic-id")
+ title_element = row.find_element(By.CSS_SELECTOR, "a.title")
+ title = title_element.text.strip()
+ url = title_element.get_attribute("href")
+ views = row.find_element(By.CSS_SELECTOR, "td.num.views .number").text.strip()
+ comments = row.find_element(By.CSS_SELECTOR, "td.num.posts-map .number").text.strip() # Extract creation and latest activity dates
+ activity_cell = row.find_element(By.CSS_SELECTOR, "td.activity")
+ date_title = activity_cell.get_attribute("title") # Extract dates using regex
+ created_date = None
+ latest_activity = None created_match = re.search(r"Created: (.*?)(?:
+|$)", date_title)
+ if created_match:
+ created_date = created_match.group(1).strip() latest_match = re.search(r"Latest: (.*?)(?:
+|$)", date_title)
+ if latest_match:
+ latest_activity = latest_match.group(1).strip() # Generate unique ID
+ unique_id = generate_date_hash_id(url) # Append to proposals list
+ proposals.append({
+ "id": unique_id,
+ "topic_id": topic_id,
+ "title": title,
+ "url": url,
+ "views": views,
+ "comments": comments,
+ "created_date": created_date,
+ "latest_activity": latest_activity
+ })
+ except Exception as e:
+ print(f"Error processing row: {e}")
+ return proposals
+``` #### Fetching Proposal Details ```python
+def fetch_proposal_details(proposal):
+ try:
+ driver.get(proposal["url"]) # Wait and scrape main content
+ content_element = WebDriverWait(driver, 10).until(
+ EC.presence_of_element_located((By.CLASS_NAME, "cooked"))
+ )
+ content = content_element.text.strip()
+ proposal["content"] = content # Collect comments if enabled
+ if COLLECT_COMMENTS:
+ comments_elements = driver.find_elements(By.CSS_SELECTOR, "div.topic-post")
+ comments = []
+ for comment in comments_elements:
+ author = comment.find_element(By.CSS_SELECTOR, "div.names a").text.strip()
+ comment_text = comment.find_element(By.CLASS_NAME, "cooked").text.strip()
+ comments.append({"author": author, "comment": comment_text})
+ proposal["comments_details"] = comments
+ except Exception as e:
+ print(f"Error fetching details for {proposal['title']}: {e}")
+```
+
+--- Chunk 61 ---
+#### Generating Unique IDs ```python
+def generate_date_hash_id(url):
+ hash_str = hashlib.sha256(url.encode()).hexdigest()[:16]
+ return f"{hash_str}"
+``` ### Configuration Options The CEG forum scraper can be customized through several parameters: ```python
+# Constants
+MAIN_URL = "https://forum.ceg.vote/latest" # Source URL for proposals
+OUTPUT_FILE = "knowledge/metis/ceg.json" # Output file path
+MAX_PROPOSALS = 20 # Maximum number of proposals to collect
+COLLECT_COMMENTS = True # Toggle whether to collect comments
+``` ### Data Flow 1. The script starts by removing any existing output file to ensure fresh data
+2. It fetches the list of proposals from the main forum page
+3. For each proposal (up to MAX_PROPOSALS):
+ - It extracts the metadata (title, URL, views, comments, dates)
+ - It generates a unique ID based on the URL hash
+ - It fetches the detailed content by navigating to the proposal's page
+ - If enabled, it collects all comments and their authors
+4. The complete dataset is then saved to the specified JSON file ### Output Structure The CEG forum scraper produces a JSON file with the following structure: ```json
+[
+ {
+ "id": "1a2b3c4d5e6f7890",
+ "topic_id": "12345",
+ "title": "Proposal: Add New Feature X to Platform",
+ "url": "https://forum.ceg.vote/t/proposal-add-new-feature-x-to-platform/12345",
+ "views": "123",
+ "comments": "45",
+ "created_date": "Jan 15, 2025",
+ "latest_activity": "Mar 10, 2025",
+ "content": "This is the main proposal content discussing Feature X...",
+ "comments_details": [
+ {
+ "author": "User1",
+ "comment": "I support this proposal because..."
+ },
+ {
+ "author": "User2",
+ "comment": "Have we considered the implications for..."
+ }
+ ]
+ }
+ // Additional proposals...
+]
+```
+
+--- Chunk 62 ---
+### Error Handling The scraper implements comprehensive error handling to ensure reliability: - Individual proposal processing errors are caught to prevent the entire scrape from failing
+- Timeouts are managed through WebDriverWait with configurable duration
+- Element not found exceptions are handled gracefully
+- Network issues are reported with meaningful error messages ### Automation with GitHub Actions The CEG forum scraper is automated through a GitHub Actions workflow that: 1. Runs daily at midnight UTC
+2. Sets up a Python 3.9 environment
+3. Installs Chrome, ChromeDriver, and required Python packages
+4. Executes the scraping script
+5. Commits and pushes any changes to the repository ```yaml
+name: "Knowledge Scraping - ceg"
+on:
+ workflow_dispatch:
+ schedule:
+ - cron: "0 0 * * *" # Runs daily at midnight UTC jobs:
+ scrape-ceg:
+ runs-on: ubuntu-latest
+ permissions:
+ contents: write
+ steps:
+ - name: Checkout
+ uses: actions/checkout@v4 - name: Set up Python 3.9
+ uses: actions/setup-python@v2
+ with:
+ python-version: "3.9" - name: Install all necessary packages
+ run: |
+ sudo apt-get install -y chromium-browser chromium-chromedriver python3-selenium
+ pip install bs4 selenium webdriver_manager - name: Run the scraping script
+ run: python scripts/addknowledge_CEG.py - name: Commit and push if content changed
+ run: |
+ git config user.name "Automated"
+ git config user.email "actions@users.noreply.github.com"
+ git add -A
+ timestamp=$(date -u)
+ git commit -m "Latest data: ${timestamp}" || exit 0
+ git push
+``` ## Implementation Considerations ### Selenium vs. Regular HTTP Requests The CEG Forum scraper uses Selenium instead of simple HTTP requests because: 1. **Dynamic Content**: The forum uses JavaScript to render content that isn't available in the initial HTML
+2. **Complex Navigation**: Selenium allows for realistic browser interactions like clicking and waiting
+3. **State Management**: The forum might require session state that Selenium handles automatically
+
+--- Chunk 63 ---
+### Performance Optimization Despite the overhead of using a headless browser, several optimizations are in place: - **Limited Scope**: The `MAX_PROPOSALS` parameter prevents excessive processing
+- **Headless Mode**: Chrome runs without a GUI to reduce resource usage
+- **Efficient Waits**: WebDriverWait is used instead of sleep() to proceed as soon as elements are available
+- **Targeted Selectors**: CSS selectors are specific to minimize search time ### Security Considerations The scraper implements several security best practices: - Running Chrome with sandbox disabled only in a controlled environment
+- Not storing or processing user credentials
+- Respecting the forum's robots.txt and rate limits
+- Using content extraction rather than executing any forum JavaScript code ## Customization Guide To adapt the CEG forum scraper for other forum platforms: 1. Update the `MAIN_URL` constant to point to the new forum
+2. Modify the CSS selectors in `fetch_proposals()` to match the new forum's structure
+3. Adjust the content extraction in `fetch_proposal_details()` based on the target site's layout
+4. Consider changing the comment collection strategy if the forum uses a different comment structure ### Common Adjustments For forums running on different platforms: - Discourse forums will use similar selectors with minor variations
+- phpBB forums require different CSS selectors but similar overall approach
+- Custom forum software may need significant selector changes ## Troubleshooting Common issues and their solutions: 1. **ChromeDriver Version Mismatch**: - The `webdriver_manager` library should handle this automatically
+ - If issues persist, manually specify a compatible ChromeDriver version 2. **Element Not Found Exceptions**: - Check if the forum structure has changed
+ - Inspect the page source to identify updated CSS selectors 3. **Rate Limiting**: - Add delays between requests: `time.sleep(2)` between proposal fetches
+ - Reduce `MAX_PROPOSALS` to stay within limits 4. **Memory Issues**:
+ - Chrome can consume significant memory; ensure sufficient RAM on the runner
+ - Consider processing in smaller batches if memory is limited
+
+--- Chunk 64 ---
+# Knowledge Scraping
+
+## Introduction
+
+Knowledge scraping is a critical component of the Alith AI agent ecosystem, enabling agents to access up-to-date information from various sources automatically. This documentation covers the knowledge scraping framework that automatically collects, processes, and maintains structured data for Alith AI agents.
+
+In the era of AI and Web3 convergence, timely and accurate information is essential for AI agents to provide value. The knowledge scraping system addresses this need by:
+
+- **Automating Data Collection**: Eliminating manual data entry and updates
+- **Standardizing Data Format**: Ensuring consistent structure for agent consumption
+- **Maintaining Freshness**: Regularly updating information from authoritative sources
+- **Preserving Provenance**: Tracking the origin and history of collected knowledge
+
+The framework currently supports two primary sources:
+
+- **Metis Blog** - Scrapes blog posts from the Metis.io website
+- **CEG Forum** - Collects proposals and discussions from the CEG governance forum
+
+## Why Knowledge Scraping?
+
+In the decentralized AI ecosystem that LazAI and Alith are building, knowledge scraping serves multiple purposes:
+
+1. **Data Sovereignty**: Helps maintain control over what data sources are trusted and used
+2. **Resource Efficiency**: Reduces redundant data collection efforts across multiple agents
+3. **Transparency**: Creates clear lineage of information through structured collection methods
+4. **Customization**: Allows developers to tailor knowledge sources to specific agent needs
+
+Knowledge scraping is designed to be extendable, allowing developers to add new sources as needed while maintaining a consistent interface for Alith agents to consume.
+
+## Getting Started
+
+The knowledge scraping system is fully automated through GitHub Actions workflows that run daily. This ensures your AI agents have access to the latest information without manual intervention.
+
+To start using knowledge scraping in your project:
+
+1. **Reference the Knowledge Files**: Direct your Alith agents to consume the JSON files in the `knowledge/metis` directory
+2. **Customize Sources**: Modify existing scrapers or create new ones following the templates provided
+3. **Configure Update Frequency**: Adjust GitHub Actions workflows based on how often your sources update
+
+Detailed guides for each of these steps are available in the respective technical documentation sections.
+
+
+--- Chunk 65 ---
+import { Steps } from "nextra/components"; # Search Bot In this tutorial, you will learn how to create a Python application that integrates DuckDuckGo search with
+Alith's function calling (tools) feature. This allows you to use LLM models to decide when to perform a web
+search and return the results. > Note: Although we used Python in this tutorial, you can still use
+> Alith Rust SDK and Node.js SDK to complete this bot. ## Prerequisites Before starting, ensure you have the following: - OpenAI API Key: Sign up at OpenAI and get your API key.
+- Python Environment: Install Python (3.8 or higher) and set up a virtual environment.
+- DuckDuckGo Search Library: We'll use the duckduckgo-search Python library to perform searches. <Steps> ## Install Required Libraries Install the necessary Python libraries using `pip`: ```shell
+python3 -m pip install alith duckduckgo-search
+``` - **alith**: Alith Agent SDK for Python
+- **duckduckgo-search**: A Python library to interact with DuckDuckGo's search engine. ## Set Up Environment Variables Store your API keys and tokens as environment variables for security: ```shell
+export OPENAI_API_KEY="your-openai-api-key"
+``` ## Write the Python Code Create a Python script (e.g., `search-bot.py`) and add the following code: ```python
+from alith import Agent
+from duckduckgo_search import DDGS def search(query: str) -> str:
+ """
+ DuckDuckGoSearch is a tool designed to perform search queries on the DuckDuckGo search engine.
+ It takes a search query string as input and returns relevant search results.
+ This tool is ideal for scenarios where real-time information from the internet is required,
+ such as finding the latest news, retrieving detailed information on a specific topic, or verifying facts.
+ """
+ results = DDGS.text(query, max_results=10)
+ if results:
+ response = f"Top 10 results for '{query}':
+
+--- Chunk 66 ---
+"
+ for i, result in enumerate(results, start=1):
+ response += f"{i}. {result['title']}
+ {result['link']}
+"
+ return response
+ else:
+ return f"No results found for '{query}'." agent = Agent(
+ name="Search Bot Agent",
+ model="gpt-4",
+ preamble="""You are a searcher. When I ask questions about Web3, you can search from the Internet and answer them. When you encounter other questions, you can directly answer them.""",
+ tools=[search]
+) # Main loop to interact with the user
+if __name__ == "__main__":
+ print("Welcome to the DuckDuckGo Search Tool with OpenAI!")
+ while True:
+ user_input = input("
+You: ")
+ if user_input.lower() in ["exit", "quit"]:
+ print("Goodbye!")
+ break
+ response = agent.prompt(user_input)
+ print(f"Assistant: {response}")
+``` ## Run the Application Run your Python script to start the application: ```shell
+python3 search-bot.py
+``` ## Test the Bot - Start the application and type a query that might require a web search (e.g., "What is Bitcoin?").
+- If a search is required, it will call the DuckDuckGo search function and return the results. ## Enhance the Bot Here are some ideas to improve your bot: 1. Multiple Tools: Add more tools (e.g., weather lookup, currency conversion) and let Alith decide which one to use.
+2. Rich Formatting: Format the search results in a more user-friendly way.
+3. Error Handling: Add error handling for invalid queries or API failures.
+4. Caching: Cache search results to reduce API calls and improve performance using Rust. </Steps> ## References - [Alith Documentation](https://alith.lazai.network/docs)
+- [DuckDuckGo Search Library](https://pypi.org/project/duckduckgo-search/)
+
+--- Chunk 67 ---
+import { Steps } from "nextra/components"; # Slack Bot In this tutorial, you will learn how to create a Slack bot that uses
+the Alith Python SDK to generate responses to messages. This bot will
+listen to messages in a slack channel and reply. > Note: Although we used Python in this tutorial, you can still use
+> Alith Rust SDK and Node.js SDK to complete this bot. The benefit
+> of using Alith Python SDK is that you can improve development
+> efficiency while still getting a production-level AI Bot.
+> For example, you can deploy the Bot on AWS Lambda, benefiting
+> from the core Rust implementation and few Python dependencies,
+> it will get a much smaller cold start than frameworks written by
+> Python such as Langchain. ## Prerequisites Before starting, ensure you have the following: - OpenAI API Key: Sign up at OpenAI and get your API key.
+- Slack App and Bot Token: Create a Slack App and generate a Bot Token.
+- Python Environment: Install Python (3.8 or higher) and set up a virtual environment. <Steps> ## Install Required Libraries Install the necessary Python libraries using `pip`: ```shell
+python3 -m pip install alith slack_sdk slack_bolt
+``` - **alith**: Alith Agent SDK for Python
+- **slack_sdk**: Official Slack SDK for Python.
+- **slack_bolt**: A framework for building Slack apps. ## Create a Slack App 1. Go to the [Slack API](https://api.slack.com/apps) and click Create New App.
+2. Choose **From scratch**, give your app a name, and select your workspace.
+3. Under OAuth & Permissions, add the following bot token scopes: - **app_mentions:read**
+- **chat:write**
+- **im:history**
+- **im:write** 4. Install the app to your workspace and copy the Bot Token (starts with xoxb-).
+5. Under Socket Mode, enable it and generate an App Token (starts with xapp-). ## Set Up Environment Variables Store your API keys and tokens as environment variables for security: ```shell
+export OPENAI_API_KEY="your-openai-api-key"
+export SLACK_BOT_TOKEN="xoxb-your-slack-bot-token"
+export SLACK_APP_TOKEN="xapp-your-slack-app-token"
+```
+
+--- Chunk 68 ---
+## Write the Slack Bot Code Create a Python script (e.g., `slack-bot.py`) and add the following code: ```python
+import os
+from alith import Agent
+from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler # Initialize Slack Bolt app with the bot token
+slack_app = App(token=os.getenv("SLACK_BOT_TOKEN"))
+agent = Agent(
+ name="Slack Bot Agent",
+ model="gpt-4",
+ preamble="""You are an advanced AI assistant built by [Alith](https://github.com/0xLazAI/alith).""",
+) # Define a message handler
+@slack_app.message("")
+def handle_message(message, say):
+ # Use the agent to generate a response
+ response = agent.prompt(message["text"])
+ # Send the reply back to the Slack channel
+ say(response) # Start the bot using Socket Mode
+if __name__ == "__main__":
+ handler = SocketModeHandler(slack_app, os.getenv("SLACK_APP_TOKEN"))
+ handler.start()
+``` ## Run the Slack Bot Run your Python script to start the bot: ```shell
+python3 slack-bot.py
+``` ## Test the Bot 1. Go to your Slack workspace.
+2. Mention the bot in a channel or send it a direct message. ## Deploy the Bot To keep the bot running 24/7, deploy it to a cloud platform like: - Heroku: Follow the [Heroku Python deployment guide](https://devcenter.heroku.com/articles/getting-started-with-python).
+- AWS Lambda: Use the [Serverless Framework](https://www.serverless.com/) to deploy the bot.
+- Google Cloud Run: Follow the [Google Cloud Run documentation](https://cloud.google.com/run/docs/quickstarts/build-and-deploy). ## Enhance the Bot Here are some ideas to improve your bot: 1. Contextual Conversations: Store conversation history to enable multi-turn dialogues.
+2. Error Handling: Add error handling for API failures or invalid inputs.
+3. Custom Commands: Allow users to trigger specific actions (e.g., `/ask` for questions).
+4. Rate Limiting: Prevent abuse by limiting the number of requests per user. </Steps> ## References - [Alith Documentation](https://alith.lazai.network/docs)
+- [Slack API Documentation](https://api.slack.com/)
+- [Slack Bolt Documentation](https://slack.dev/bolt-python/tutorial/getting-started)
+
+--- Chunk 69 ---
+import { Steps } from "nextra/components"; # Telegram Bot with RAG In this tutorial, you will learn how to create a Telegram Bot that uses the Alith
+Python SDK to generate responses to messages with the GitHub project docuemnts.
+This bot will listen to messages in a Telegram channel and reply. > Note: Although we used Python in this tutorial, you can still use the Alith Rust SDK
+> and Node.js SDK to complete this bot. The advantage of using the Alith Python SDK is
+> that it improves development efficiency while still providing a production-level AI
+> Bot. For example, you can deploy the Bot on AWS Lambda, leveraging the core Rust
+> implementation and minimal Python dependencies, resulting in a much smaller cold
+> start time compared to frameworks like Langchain. ## Prerequisites Before starting, ensure you have the following: - GitHub Access Key: Sign up at Github and obtain your access key in your account settings.
+- OpenAI API Key: Sign up at OpenAI and obtain your API key.
+- Telegram Bot Token: Create a Telegram Bot and retrieve the Bot Token.
+- Python Environment: Install Python (3.8 or higher) and set up a virtual environment. <Steps> ## Install Required Libraries Install the necessary Python libraries using `pip`: ```shell
+# For AI Agent with LLM
+python3 -m pip install alith
+# For Telegram Bot
+python3 -m pip install python-telegram-bot
+# For GitHub project document download and extract
+python3 -m pip install langchain-community
+# For Vector Database and Embeddding Models
+python3 -m pip install -U pymilvus "pymilvus[model]"
+``` ## Create a Telegram Bot 1. Search for **BotFather** in Telegram and interact with it.
+2. Send the `/newbot` command to create a new bot.
+3. Follow the prompts to provide a name and username for your bot, and save the generated Bot Token. ## Set Up Environment Variables Store your API keys and tokens as environment variables for security: ```shell
+export GITHUB_ACCESS_KEY="your-github-access-key"
+export OPENAI_API_KEY="your-openai-api-key"
+export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+``` ## Write the Telegram Bot Code Create a Python script (e.g., `tg-bot-with-rag.py`) and add the following code: ```python
+import os
+import re from telegram import Update from
+
+--- Chunk 70 ---
+telegram.ext import ( Application, MessageHandler, filters, CallbackContext, ) from langchain_community.document_loaders.github import GithubFileLoader
+from alith import Agent, MilvusStore, chunk_text # --------------------------------------------
+# Constants
+# -------------------------------------------- GITHUB_ACCESS_KEY = os.getenv("GITHUB_ACCESS_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GITHUB_REPO = "0xLazAI/alith"
+DOC_RELATIVE_PATH = "website/src/content" # --------------------------------------------
+# Init Document Database
+# -------------------------------------------- def create_vector_store():
+ docs = GithubFileLoader(
+ repo=GITHUB_REPO,
+ access_token=GITHUB_ACCESS_KEY,
+ github_api_url="https://api.github.com",
+ file_filter=lambda file_path: re.match(
+ f"{DOC_RELATIVE_PATH}/.*\\.mdx?", file_path
+ )
+ is not None,
+ ).load()
+ docs = chunk_text(docs, overlap_percent=0.2)
+ return MilvusStore().save_docs(docs) # --------------------------------------------
+# Init Alith Agent
+# -------------------------------------------- agent = Agent(
+ name="Telegram Bot Agent",
+ model="gpt-4",
+ preamble="""You are a comedian here to entertain the user using humour and jokes.""",
+ store=create_vector_store(),
+) # --------------------------------------------
+# Init Telegram Bot
+# -------------------------------------------- async def handle_message(update: Update, context: CallbackContext) -> None:
+ response = agent.prompt(update.message.text)
+ await context.bot.send_message(chat_id=update.effective_chat.id, text=response) app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)) # Start the bot
+if __name__ == "__main__":
+ app.run_polling()
+``` ## Run the Slack Bot Run your Python script to start the bot: ```shell
+python3 tg-bot-with-rag.py
+``` ## Test the Bot 1. Interact with your Telegram Bot.
+2. Send messages, and the bot should reply. An example input and output with the preamble `You are a comedian here to entertain the user using humour and jokes.`. - Input ```text
+What is Alith?
+``` - output ```text
+Ah, Alith! It'slike the Swiss Army knife of decentralized AIframeworks,but with fewerknivesblockchain.Letbreakit down forangmoreycu in a way that won't put you to sleep: Imagine you're at a potluck, but instead of bringing potato
+
+--- Chunk 71 ---
+salad, everyone brings *data*. Alith is the super-organized host who makessure no one's data gets spilled, stolen, or accidentally eaten by the dog. It's built on LazAr, the blockchain buffet table where A developers, data providers, and other tech-savvy folks gather to collaborate, innovate, and probably argue over whose algorithm is the fanciest Alith is the cool kid at the party who speaks python, Rust, and Node.is fluently, so everyone feels included. It's optimized for cpu and Gpu, wiich is like making sure your potato salad works whether you're serving it in a mansion or a tent.And it'sso no one person hogsaecentralized.all the guacamole(read: data sovereignty). Compared to Rig (its Rust-based cousin with fewer social skills), Alith is the friend who brings the games, the snacks, *and* knows how to fix the Wi-fi. It's developer-friendly, scalable, and secure basically the Ar framework equivalent of a fantasy football league that *actually* workswithout drama. So, in conclusion: Alith is the future of decentralized Ar, where everyone gets a fair slice of the pizza, and no one has to deal with a centralized overlord hogging the pepperoni.
+``` ## Deploy the Bot To keep the bot running 24/7, deploy it to a cloud platform like: - Heroku: Follow the [Heroku Python deployment guide](https://devcenter.heroku.com/articles/getting-started-with-python).
+- AWS Lambda: Use the [Serverless Framework](https://www.serverless.com/) to deploy the bot.
+- Google Cloud Run: Follow the [Google Cloud Run documentation](https://cloud.google.com/run/docs/quickstarts/build-and-deploy). ## Enhance the Bot Here are some ideas to improve your bot: 1. Contextual Conversations: Store conversation history to enable multi-turn dialogues.
+2. Error Handling: Add error handling for API failures or invalid inputs.
+3. Custom Commands: Allow users to trigger specific actions (e.g., `/ask` for questions).
+4. Rate Limiting: Prevent abuse by limiting the number of requests per user. </Steps> ## References - [Alith Documentation](https://alith.lazai.network/docs)
+- [Telegram Bot API Documentation](https://core.telegram.org/bots/api)
+- [python-telegram-bot Documentation](https://docs.python-telegram-bot.org/en/stable/)
+
+--- Chunk 72 ---
+import { Steps, Tabs } from "nextra/components"; # Telegram Bot In this tutorial, you will learn how to create a Telegram Bot that uses the Alith
+Python SDK to generate responses to messages. This bot will listen to messages in a
+Telegram channel and reply. > Note: Although we used Python in this tutorial, you can still use the Alith Rust SDK
+> and Node.js SDK to complete this bot. The advantage of using the Alith Python SDK is
+> that it improves development efficiency while still providing a production-level AI
+> Bot. For example, you can deploy the Bot on AWS Lambda, leveraging the core Rust
+> implementation and minimal Python dependencies, resulting in a much smaller cold
+> start time compared to frameworks like Langchain. ## Prerequisites Before starting, ensure you have the following: - OpenAI API Key: Sign up at OpenAI and obtain your API key.
+- Telegram Bot Token: Create a Telegram Bot and retrieve the Bot Token.
+- Python Environment: Install Python (3.8 or higher) and set up a virtual environment. <Tabs items={['Rust', 'Python']}>
+ <Tabs.Tab>
+ <Steps>
+## Install Required Libraries Install the necessary Rust libraries using `cargo`: ```shell
+cargo add alith --git https://github.com/0xLazAI/alith
+cargo add teloxide dotenv
+``` ## Create a Telegram Bot 1. Search for **BotFather** in Telegram and interact with it.
+2. Send the `/newbot` command to create a new bot.
+3. Follow the prompts to provide a name and username for your bot, and save the generated Bot Token. ## Set Up Environment Variables Store your API keys and tokens as environment variables for security: ```shell
+export OPENAI_API_KEY="your-openai-api-key"
+export TELOXIDE_TOKEN="your-telegram-bot-token"
+``` ## Write the Telegram Bot Code Create a Rust project `cargo init` and add the following code in `main.rs`: ```rust
+use alith::{Completion, Request, core::llm::client::Client};
+
+--- Chunk 73 ---
+use anyhow::Error;
+use teloxide::prelude::*;
+use dotenv::dotenv; #[tokio::main]
+async fn main() -> Result<(), Error> {
+ dotenv().ok();
+ log::info!("Starting command bot..."); let telegram_bot = Bot::from_env(); let client = Client::from_model_name("gpt-3.5-turbo").expect("Failed to create LLM"); let handler = Update::filter_message().endpoint(|bot: Bot, msg: Message, mut client: Client| async move {
+ if let Some(text) = msg.text() {
+ let result = client.completion(Request::new(text.to_string(), r#"You are a spam detector here to assist the user in identifying spam messages.
+ Respond with a clear yes/no and a brief explanation why."#.to_string())).await.unwrap();
+ let response_text = result.content;
+ bot.send_message(msg.chat.id, response_text).await?;
+ } else {
+ bot.send_message(msg.chat.id, "Please send a text message to check for spam.").await?;
+ }
+ respond(())
+ }); Dispatcher::builder(telegram_bot, handler)
+ .dependencies(dptree::deps![client])
+ .enable_ctrlc_handler()
+ .build()
+ .dispatch()
+ .await; Ok(())
+}
+``` ## Run the Telegram Bot Run your Rust script to start the bot: ```shell
+cargo run --release
+``` </Steps>
+ </Tabs.Tab>
+ <Tabs.Tab>
+ <Steps>
+## Install Required Libraries Install the necessary Python libraries using `pip`: ```shell
+python3 -m pip install alith python-telegram-bot
+``` - **alith**: Alith Agent SDK for Python
+- **python-telegram-bot**: Official Telegram SDK for Python. ## Create a Telegram Bot 1. Search for **BotFather** in Telegram and interact with it.
+2. Send the `/newbot` command to create a new bot.
+3. Follow the prompts to provide a name and username for your bot, and save the generated Bot Token. ## Set Up Environment Variables Store your API keys and tokens as environment variables for security: ```shell
+export OPENAI_API_KEY="your-openai-api-key"
+export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+``` ## Write the Telegram Bot Code Create a Python script (e.g., `tg-bot.py`) and add the following code: ```python
+import os
+from telegram import Update
+from telegram.ext import (
+ Application,
+ CommandHandler,
+ MessageHandler,
+ filters,
+ CallbackContext,
+)
+from alith import Agent
+
+--- Chunk 74 ---
+# Initialize Alith Agent
+agent = Agent(
+ name="Telegram Bot Agent",
+ model="gpt-4",
+ preamble="""You are an advanced AI assistant built by [Alith](https://github.com/0xLazAI/alith).""",
+) # Initialize Telegram Bot
+bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+app = Application.builder().token(bot_token).build() # Define message handler
+async def handle_message(update: Update, context: CallbackContext) -> None:
+ # Use the agent to generate a response
+ response = agent.prompt(update.message.text)
+ # Send the reply back to the Telegram chat
+ await context.bot.send_message(chat_id=update.effective_chat.id, text=response) # Add handlers to the application
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)) # Start the bot
+if __name__ == "__main__":
+ app.run_polling() ``` ## Run the Telegram Bot Run your Python script to start the bot: ```shell
+python3 tg-bot.py
+``` </Steps>
+ </Tabs.Tab>
+</Tabs> ## Test the Bot 1. Interact with your Telegram Bot.
+2. Send messages, and the bot should reply. ## Deploy the Bot To keep the bot running 24/7, deploy it to a cloud platform like: - Heroku: Follow the [Heroku Python deployment guide](https://devcenter.heroku.com/articles/getting-started-with-python).
+- AWS Lambda: Use the [Serverless Framework](https://www.serverless.com/) to deploy the bot.
+- Google Cloud Run: Follow the [Google Cloud Run documentation](https://cloud.google.com/run/docs/quickstarts/build-and-deploy). ## Enhance the Bot Here are some ideas to improve your bot: 1. Contextual Conversations: Store conversation history to enable multi-turn dialogues.
+2. Error Handling: Add error handling for API failures or invalid inputs.
+3. Custom Commands: Allow users to trigger specific actions (e.g., `/ask` for questions).
+4. Rate Limiting: Prevent abuse by limiting the number of requests per user. ## References - [Alith Documentation](https://alith.lazai.network/docs)
+- [Telegram Bot API Documentation](https://core.telegram.org/bots/api)
+- [python-telegram-bot Documentation](https://docs.python-telegram-bot.org/en/stable/)
+
+--- Chunk 75 ---
+import { Steps } from "nextra/components"; # Twitter Agent In this tutorial, you will learn how to create a Node.js application that integrates X/twitter with
+Alith's Model Context Protocol (MCP) feature. This allows you to use LLM models and agents to fetch
+tweets from a specific user, post a new tweet, like a tweet, quote a tweet, etc. > Note: Although we used Node.js in this tutorial, you can still use
+> Alith Rust SDK and Python SDK to complete this twitter agent. ## Prerequisites Before starting, ensure you have the following: - OpenAI API Key: Sign up at OpenAI and get your API key or you can use your favorite LLM models.
+- Node.js 18+ environment and pnpm.
+- A X/Twitter account. <Steps> ## Install Required Libraries Init the project and install the necessary Node.js libraries using `pnpm`: ```shell
+mkdir alith-twitter-example && cd alith-twitter-example && pnpm init
+pnpm i alith
+pnpm i --save-dev @types/json-schema
+``` ## Set Up Environment Variables ### LLM API Key Store your API keys and tokens as environment variables for security: ```shell
+export OPENAI_API_KEY="your-openai-api-key"
+``` ### Cookie Authentication ```shell
+export AUTH_METHOD=cookies
+export TWITTER_COOKIES=["auth_token=your_auth_token; Domain=.twitter.com", "ct0=your_ct0_value; Domain=.twitter.com"]
+``` To obtain cookies: 1. Log in to Twitter in your browser
+2. Open Developer Tools (F12)
+3. Go to the Application tab > Cookies
+4. Copy the values of `auth_token` and `ct0` cookies ### Username/Password Authentication ```shell
+export AUTH_METHOD=credentials
+export TWITTER_USERNAME=your_username
+export TWITTER_PASSWORD=your_password
+export TWITTER_EMAIL=your_email@example.com # Optional
+export TWITTER_2FA_SECRET=your_2fa_secret # Optional, required if 2FA is enabled
+```
+
+--- Chunk 76 ---
+### API Authentication ```shell
+export AUTH_METHOD=api
+export TWITTER_API_KEY=your_api_key
+export TWITTER_API_SECRET_KEY=your_api_secret_key
+export TWITTER_ACCESS_TOKEN=your_access_token
+export TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret
+``` ## Write the Typescript Code Create a Typescript script (e.g., `index.ts`) and add the following code: > Note: We need to install tsc firstly ```typescript
+import { Agent } from "alith"; const agent = new Agent({
+ name: "A twitter agent",
+ model: "gpt-4",
+ preamble: "You are a automatic twitter agent.",
+ mcpConfigPath: "mcp_twitter.json",
+});
+console.log(await agent.prompt("Search Twitter for tweets about AI"));
+console.log(
+ await agent.prompt('Post a tweet saying "Hello from Alith Twitter Agent!"'),
+);
+console.log(await agent.prompt("Get the latest tweets from @OpenAI"));
+console.log(await agent.prompt("Chat with Grok about quantum computing"));
+``` ## Write the MCP Config Create a JSON file named `mcp_twitter.json` and add the following code: ```json
+{
+ "mcpServers": {
+ "agent-twitter-client-mcp": {
+ "command": "npx",
+ "args": ["-y", "agent-twitter-client-mcp"],
+ "env": {
+ "AUTH_METHOD": "cookies",
+ "TWITTER_COOKIES": "[\"auth_token=YOUR_AUTH_TOKEN; Domain=.twitter.com\", \"ct0=YOUR_CT0_VALUE; Domain=.twitter.com\", \"twid=u%3DYOUR_USER_ID; Domain=.twitter.com\"]"
+ }
+ }
+ }
+}
+``` ## Run the Application Run your Typescript script to start and test the application: ```shell
+npx tsc && node index.js
+``` </Steps> ## References - [Alith Documentation](https://alith.lazai.network/docs)
+- [Agent Twitter Client MCP Library](https://github.com/ryanmac/agent-twitter-client-mcp)
